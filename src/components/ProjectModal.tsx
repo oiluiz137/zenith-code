@@ -13,6 +13,8 @@ interface Props {
 export function ProjectModal({ project, onChanged, onDeleted, onClose }: Props) {
   const [name, setName] = useState(project.name);
   const [instructions, setInstructions] = useState(project.instructions);
+  const [folder, setFolder] = useState(project.folder ?? "");
+  const [picking, setPicking] = useState(false);
   const [files, setFiles] = useState<{ id: string; name: string; size: number }[]>([]);
   const [error, setError] = useState("");
 
@@ -23,11 +25,25 @@ export function ProjectModal({ project, onChanged, onDeleted, onClose }: Props) 
 
   async function save() {
     try {
-      await api.updateProject(project.id, { name, instructions });
+      await api.updateProject(project.id, { name, instructions, folder: folder.trim() || null });
       onChanged();
       onClose();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  async function pickFolder() {
+    setPicking(true);
+    setError("");
+    try {
+      const r = await api.pickFolder();
+      if (r.path) setFolder(r.path);
+      else if (r.error) setError(`Não foi possível abrir o seletor (${r.error}). Digite o caminho no campo.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPicking(false);
     }
   }
 
@@ -56,24 +72,32 @@ export function ProjectModal({ project, onChanged, onDeleted, onClose }: Props) 
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <header>
-          <strong>Projeto</strong>
+          <strong>Projeto</strong><span className="spacer" />
           <button className="icon-btn" onClick={onClose} title="Fechar" aria-label="Fechar"><Icon name="x" size={16} /></button>
         </header>
         <div className="modal-body">
         <section>
           <label className="field">
-            Nome
+            <span>Nome</span>
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </label>
+          <div className="field">
+            <span>Pasta de trabalho</span>
+            <div className="folder-row">
+              <input value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="ex.: E:\projetos\meu-app" aria-label="Pasta de trabalho do projeto" spellCheck={false} />
+              <button className="btn sm" onClick={pickFolder} disabled={picking}><Icon name="folder" size={14} /> {picking ? "Aguardando…" : "Escolher…"}</button>
+            </div>
+            <small>Conversas do projeto leem e escrevem nesta pasta. {picking && "O seletor de pastas abriu numa janela do Windows."}</small>
+          </div>
           <label className="field">
-            Instruções do projeto (entram no contexto de todas as conversas dele)
+            <span>Instruções do projeto</span>
             <textarea rows={5} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
           </label>
         </section>
         <section>
           <h3>Arquivos de referência</h3>
           <p className="hint">Arquivos de texto (md, txt, código, csv, json). O app envia ao modelo os trechos mais relevantes para cada pergunta.</p>
-          <input type="file" accept=".md,.txt,.csv,.json,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.log" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+          <label className="btn sm file-btn"><Icon name="clip" size={14} /> Adicionar arquivo<input type="file" hidden accept=".md,.txt,.csv,.json,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.log" onChange={(e) => { if (e.target.files?.[0]) upload(e.target.files[0]); e.target.value = ""; }} /></label>
           <ul className="plain">
             {files.map((f) => (
               <li key={f.id}>

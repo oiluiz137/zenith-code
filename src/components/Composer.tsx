@@ -49,6 +49,9 @@ interface Props {
   skills?: { name: string; description: string }[];
   big?: boolean;
   placeholder?: string;
+  /** Porcentagem do contexto usada nesta conversa (círculo ao lado do modo). */
+  contextPct?: number | null;
+  onContext?: () => void;
 }
 
 type Pop = "attach" | "tools" | "model" | "mode" | null;
@@ -143,17 +146,51 @@ export function Composer(p: Props) {
             ))}
           </div>
         )}
-        <div className="composer-main">
-          <textarea
-            ref={taRef}
-            value={p.value}
-            onChange={(e) => p.onChange(e.target.value)}
-            onKeyDown={onKey}
-            placeholder={p.placeholder ?? (p.big ? "Como posso ajudar?" : "Responder")}
-            rows={1}
-            disabled={p.streaming}
-            aria-label="Mensagem"
-          />
+        <textarea
+          ref={taRef}
+          value={p.value}
+          onChange={(e) => p.onChange(e.target.value)}
+          onKeyDown={onKey}
+          placeholder={p.placeholder ?? (p.big ? "Como posso ajudar?" : "Responder")}
+          rows={1}
+          disabled={p.streaming}
+          aria-label="Mensagem"
+        />
+        <div className="composer-row">
+          <div className="popover-wrap">
+            <button className="icon-btn" onClick={() => setPop(pop === "attach" ? null : "attach")} title="Adicionar arquivos, pasta, projeto ou skill" aria-label="Adicionar">
+              <Icon name="plus" size={18} />
+            </button>
+            {pop === "attach" && (
+              <div className="popover up">
+                <button onClick={() => { setPop(null); fileRef.current?.click(); }}><Icon name="clip" size={15} /> Anexar arquivo de texto</button>
+                {p.onPickFolder && <button onClick={() => { setPop(null); p.onPickFolder?.(); }}><Icon name="folder" size={15} /> Escolher pasta de trabalho</button>}
+                <button onClick={() => { setPop(null); p.onOpenView("projects"); }}><Icon name="layers" size={15} /> Usar um projeto</button>
+                <button onClick={() => { setPop(null); p.onChange("/"); taRef.current?.focus(); }}><Icon name="spark" size={15} /> Usar uma skill</button>
+              </div>
+            )}
+          </div>
+          <input ref={fileRef} type="file" multiple hidden onChange={(e) => { p.onAttachFiles(e.target.files); if (fileRef.current) fileRef.current.value = ""; }} />
+
+          <div className="popover-wrap">
+            <button className={`icon-btn ${toolsOn < 4 ? "dim" : ""}`} onClick={() => setPop(pop === "tools" ? null : "tools")} title={`Ferramentas desta conversa (${toolsOn} de 4 ligadas)`} aria-label="Ferramentas desta conversa">
+              <Icon name="sliders" size={17} />
+            </button>
+            {pop === "tools" && (
+              <div className="popover up">
+                <div className="menu-label">Ferramentas desta conversa</div>
+                {([["web", "Pesquisa na web", "globe"], ["mcp", "Servidores MCP", "plug"], ["skills", "Skills", "spark"], ["exec", "Executar comandos", "terminal"]] as const).map(([k, label, icon]) => (
+                  <button key={k} onClick={() => p.onToolFlags({ ...tools, [k]: !tools[k] })} role="switch" aria-checked={tools[k]}>
+                    <Icon name={icon} size={15} /> <span className="grow">{label}</span>
+                    <span className={`switch sm ${tools[k] ? "on" : ""}`} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <span className="spacer" />
+
           {p.streaming ? (
             <button className="send stop" onClick={p.onStop} title="Parar" aria-label="Parar"><Icon name="stop" size={13} /></button>
           ) : (
@@ -163,38 +200,6 @@ export function Composer(p: Props) {
       </div>
 
       <div className="composer-under">
-        <div className="popover-wrap">
-          <button className="icon-btn" onClick={() => setPop(pop === "attach" ? null : "attach")} title="Adicionar arquivos, projeto ou skill" aria-label="Adicionar">
-            <Icon name="plus" size={17} />
-          </button>
-          {pop === "attach" && (
-            <div className="popover up">
-              <button onClick={() => { setPop(null); fileRef.current?.click(); }}><Icon name="clip" size={15} /> Anexar arquivo de texto</button>
-              {p.onPickFolder && <button onClick={() => { setPop(null); p.onPickFolder?.(); }}><Icon name="folder" size={15} /> Escolher pasta de trabalho</button>}
-              <button onClick={() => { setPop(null); p.onOpenView("projects"); }}><Icon name="layers" size={15} /> Usar um projeto</button>
-              <button onClick={() => { setPop(null); p.onChange("/"); taRef.current?.focus(); }}><Icon name="spark" size={15} /> Usar uma skill</button>
-            </div>
-          )}
-        </div>
-        <input ref={fileRef} type="file" multiple hidden onChange={(e) => { p.onAttachFiles(e.target.files); if (fileRef.current) fileRef.current.value = ""; }} />
-
-        <div className="popover-wrap">
-          <button className={`icon-btn ${toolsOn < 4 ? "dim" : ""}`} onClick={() => setPop(pop === "tools" ? null : "tools")} title={`Ferramentas da conversa (${toolsOn} de 4 ligadas)`} aria-label="Ferramentas">
-            <Icon name="sliders" size={17} />
-          </button>
-          {pop === "tools" && (
-            <div className="popover up">
-              <div className="menu-label">Ferramentas desta conversa</div>
-              {([["web", "Pesquisa na web", "globe"], ["mcp", "Servidores MCP", "plug"], ["skills", "Skills", "spark"], ["exec", "Executar comandos", "terminal"]] as const).map(([k, label, icon]) => (
-                <button key={k} onClick={() => p.onToolFlags({ ...tools, [k]: !tools[k] })} role="switch" aria-checked={tools[k]}>
-                  <Icon name={icon} size={15} /> <span className="grow">{label}</span>
-                  <span className={`switch sm ${tools[k] ? "on" : ""}`} />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         <span className="disclaimer">O Zenith é uma IA e pode cometer erros.</span>
 
         <div className="popover-wrap">
@@ -240,6 +245,14 @@ export function Composer(p: Props) {
             </div>
           )}
         </div>
+        {p.contextPct !== undefined && p.contextPct !== null && (
+          <button className="ctx-ring" onClick={p.onContext} title={`${Math.round(p.contextPct)}% do contexto usado. Clique para ver detalhes.`} aria-label={`${Math.round(p.contextPct)}% do contexto usado`}>
+            <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="10" r="7.5" className="ring-track" />
+              <circle cx="10" cy="10" r="7.5" className={`ring-fill ${p.contextPct >= 90 ? "full" : ""}`} strokeDasharray={`${(Math.min(100, Math.max(0, p.contextPct)) / 100) * 47.12} 47.12`} transform="rotate(-90 10 10)" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );

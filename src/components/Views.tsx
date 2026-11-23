@@ -10,7 +10,7 @@ interface Props {
   conversations: Conversation[];
   onNewProject: () => void;
   onEditProject: (p: Project) => void;
-  onOpenFolderChat: (folder: string | null) => void;
+  onOpenFolderChat: (folder: string | null, projectId?: string) => void;
   onOpenChat: (id: string) => void;
   onPreview: (html: string) => void;
   onToast: (msg: string) => void;
@@ -69,7 +69,7 @@ function ProjectsView(p: Props) {
                 <span>{count} conversa{count === 1 ? "" : "s"}</span>
               </div>
               <div className="actions">
-                <button className="btn sm" onClick={(e) => { e.stopPropagation(); p.onOpenFolderChat(pr.folder ?? null); }}>Nova conversa</button>
+                <button className="btn sm" onClick={(e) => { e.stopPropagation(); p.onOpenFolderChat(pr.folder ?? null, pr.id); }}>Nova conversa</button>
               </div>
             </div>
           );
@@ -134,7 +134,7 @@ function AutomationsView(p: Props) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [form, setForm] = useState<{ title: string; prompt: string; repeat: ScheduledTask["repeat"]; time: string } | null>(null);
   const [err, setErr] = useState("");
-  const load = () => api.schedules().then(setTasks).catch((e) => setErr((e as Error).message));
+  const load = () => api.schedules().then((t) => { setTasks(t); setErr(""); }).catch(() => setErr("Não foi possível falar com o servidor do Zenith. Tentando de novo…"));
   useEffect(() => {
     load();
     const t = setInterval(load, 5000);

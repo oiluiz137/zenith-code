@@ -231,6 +231,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   if (method === "GET" && p === "/api/projects") return send(res, 200, listProjects());
   if (method === "POST" && p === "/api/projects") {
     const body = await readBody(req);
+    if (body.folder && !fsSync.existsSync(String(body.folder))) return send(res, 400, { error: `A pasta não existe: ${body.folder}` });
     return send(res, 201, createProject(String(body.name || "Novo projeto"), String(body.instructions ?? ""), body.folder || null));
   }
   const projMatch = /^\/api\/projects\/([^/]+)$/.exec(p);
@@ -239,6 +240,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     if (!getProject(id)) return send(res, 404, { error: "Projeto não encontrado" });
     if (method === "PATCH") {
       const body = await readBody(req);
+      if (body.folder && !fsSync.existsSync(String(body.folder))) return send(res, 400, { error: `A pasta não existe: ${body.folder}` });
       updateProject(id, { name: body.name, instructions: body.instructions, folder: body.folder !== undefined ? body.folder || null : undefined });
       return send(res, 200, getProject(id));
     }

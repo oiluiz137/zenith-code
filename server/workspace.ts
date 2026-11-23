@@ -9,12 +9,20 @@ export function pickFolder(): Promise<{ path: string | null; error?: string }> {
   if (process.platform !== "win32") {
     return Promise.resolve({ path: null, error: "Seletor de pastas nativo disponível só no Windows nesta versão. Digite o caminho." });
   }
+  // A janela "dona" invisível e sempre no topo faz o seletor abrir na frente do navegador,
+  // em vez de ficar escondido atrás dele (o processo do servidor não tem janela própria).
   const script = [
     "Add-Type -AssemblyName System.Windows.Forms",
+    "[System.Windows.Forms.Application]::EnableVisualStyles()",
+    "$owner = New-Object System.Windows.Forms.Form",
+    "$owner.TopMost = $true; $owner.ShowInTaskbar = $false; $owner.Opacity = 0; $owner.StartPosition = 'CenterScreen'",
+    "$owner.Show(); $owner.Activate()",
     "$d = New-Object System.Windows.Forms.FolderBrowserDialog",
-    "$d.Description = 'Escolha a pasta do projeto'",
+    "$d.Description = 'Escolha a pasta de trabalho'",
     "$d.ShowNewFolderButton = $true",
-    "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath }",
+    "$r = $d.ShowDialog($owner)",
+    "$owner.Close()",
+    "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [Text.Encoding]::UTF8; Write-Output $d.SelectedPath }",
   ].join("; ");
   return new Promise((resolve) => {
     execFile("powershell.exe", ["-NoProfile", "-STA", "-Command", script], { windowsHide: false, timeout: 300_000 }, (err, stdout) => {

@@ -145,6 +145,20 @@ export default function App() {
   }, [messages, live]);
 
   useEffect(() => {
+    if (view === "projects") api.projects().then(setProjects).catch(() => undefined);
+  }, [view]);
+
+  // Porcentagem do contexto usada, para o círculo ao lado do modo de permissão.
+  const [ctxPct, setCtxPct] = useState<number | null>(0);
+  useEffect(() => {
+    if (!activeId) {
+      setCtxPct(0);
+      return;
+    }
+    api.context(activeId).then((d) => setCtxPct((d.used / d.limit) * 100)).catch(() => setCtxPct(null));
+  }, [activeId, messages.length, streaming]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
@@ -293,10 +307,15 @@ export default function App() {
     setEditProject(p);
   }
 
-  async function newChatInFolder(folder: string | null) {
+  async function newChatInFolder(folder: string | null, projectId?: string) {
     setSessionMode("chat");
     setView("chat");
-    await createSession("chat", folder, "Nova conversa");
+    const project = projects.find((p) => p.id === projectId);
+    const id = await createSession("chat", folder, project ? `Conversa em ${project.name}` : "Nova conversa");
+    if (projectId) {
+      await api.updateConversation(id, { projectId });
+      await refreshConversations();
+    }
   }
 
   function applyEvent(e: StreamEvent) {
@@ -339,7 +358,7 @@ export default function App() {
       convId = await createSession(sessionMode, sessionMode === "chat" ? (draftFolder || null) : draftFolder || null, visibleText.slice(0, 60) || "Nova conversa");
       await api.updateConversation(convId, { title: visibleText.slice(0, 60) || "Nova conversa" });
       await refreshConversations();
-    } else if (messages.length === 0 && /^Nova (conversa|sessão)/.test(activeConversation?.title ?? "") && visibleText) {
+    } else if (messages.length === 0 && /^(Nova (conversa|sessão)|Conversa em )/.test(activeConversation?.title ?? "") && visibleText) {
       await api.updateConversation(convId, { title: visibleText.slice(0, 60) });
       await refreshConversations();
     }
@@ -466,6 +485,8 @@ export default function App() {
     toolFlags,
     onToolFlags: setToolFlags,
     skills,
+    contextPct: ctxPct,
+    onContext: () => openPanel("visao"),
     onOpenView: (v: "projects" | "settings") => setView(v),
     onToast: setToast,
   };
@@ -627,7 +648,7 @@ export default function App() {
               conversations={conversations}
               onNewProject={createProject}
               onEditProject={setEditProject}
-              onOpenFolderChat={(folder) => newChatInFolder(folder)}
+              onOpenFolderChat={(folder, projectId) => newChatInFolder(folder, projectId)}
               onOpenChat={(id) => { refreshConversations(); setActiveId(id); setView("chat"); }}
               onPreview={setPreview}
               onToast={setToast}
