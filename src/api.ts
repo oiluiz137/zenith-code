@@ -78,6 +78,7 @@ export const api = {
   getConversation: (id: string) => call<{ conversation: Conversation; messages: StoredMessage[] }>("GET", `/api/conversations/${id}`),
   updateConversation: (id: string, patch: { title?: string; pinned?: boolean; projectId?: string | null; folder?: string | null }) => call<Conversation>("PATCH", `/api/conversations/${id}`, patch),
   deleteConversation: (id: string) => call<{ ok: boolean }>("DELETE", `/api/conversations/${id}`),
+  modelsDir: (open = false) => call<{ path: string }>(open ? "POST" : "GET", "/api/models-dir"),
   edits: (conversationId: string) => call<AgentEdit[]>("GET", `/api/edits?conversationId=${encodeURIComponent(conversationId)}`),
   revertEdit: (id: string, hunks?: number[]) => call<{ ok: boolean; message: string }>("POST", `/api/edits/${id}/revert`, hunks ? { hunks } : {}),
   acceptEdit: (id: string) => call<{ ok: boolean; message: string }>("POST", `/api/edits/${id}/accept`, {}),

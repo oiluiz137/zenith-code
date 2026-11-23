@@ -634,6 +634,12 @@ export default function App() {
           )}
 
           {modelError && <div className="banner warn">{modelError}</div>}
+          {!modelError && inChat && models.length === 0 && settings.providers.find((x) => x.id === providerId)?.kind === "native" && (
+            <div className="banner warn ctx-warn">
+              <span className="grow">Nenhum modelo local encontrado. Coloque um arquivo .gguf (por exemplo, Qwen3-8B-Q4_K_M.gguf) na pasta de modelos e recarregue a página.</span>
+              <button className="btn sm" onClick={() => api.modelsDir(true)}>Abrir pasta de modelos</button>
+            </div>
+          )}
           {notice && <div className="banner info">{notice}</div>}
           {permMode === "bypass" && inChat && <div className="banner danger">Modo sem aprovação: ferramentas rodam sem perguntar.</div>}
 

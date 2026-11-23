@@ -2,6 +2,7 @@
 // Procuradas em <workspace>/.zenith/skills/ e em <app>/skills/.
 import fs from "node:fs";
 import path from "node:path";
+import { BUNDLED_SKILLS } from "./paths.ts";
 
 export interface Skill {
   name: string;
@@ -11,7 +12,7 @@ export interface Skill {
 }
 
 export function loadSkills(workspace: string): Skill[] {
-  const roots = [path.join(workspace, ".zenith", "skills"), path.resolve(process.cwd(), "skills")];
+  const roots = [path.join(workspace, ".zenith", "skills"), BUNDLED_SKILLS];
   const found: Skill[] = [];
   for (const root of roots) {
     if (!fs.existsSync(root)) continue;

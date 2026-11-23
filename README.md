@@ -2,7 +2,18 @@
 
 Assistente de IA local e de nuvem, com agente de código, ferramentas com permissão, skills, hooks, terminal e pesquisa na web. Roda no seu computador. Não tem conta, login nem telemetria.
 
-## Como rodar
+## Instalar (Windows)
+
+Baixe em [Releases](https://github.com/oiluiz137/zenith-code/releases):
+
+- **ZenithCode-x.y.z-Setup.exe**: instala para o seu usuário, sem administrador, com atalhos e desinstalador.
+- **ZenithCode-x.y.z-portable.zip**: extraia e abra `Zenith Code.exe`.
+
+O `Zenith Code.exe` inicia o servidor local sozinho e abre o app numa janela própria. Os dados ficam em `%LOCALAPPDATA%\Zenith Code` (na versão portátil, na pasta `data`). Coloque os modelos `.gguf` na pasta de modelos; o app mostra um botão para abri-la.
+
+Para gerar o instalador a partir do código: `npm run release` (os arquivos saem em `release/`).
+
+## Rodar a partir do código
 
 Requisitos: Node.js 22 ou superior e um modelo. O modelo local roda dentro do próprio Zenith (llama.cpp via node-llama-cpp): basta colocar um arquivo `.gguf` na pasta `models/`. Também é possível usar uma chave de API (OpenAI, Anthropic, OpenRouter).
 

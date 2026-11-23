@@ -15,3 +15,7 @@ models/*.gguf
 
 # Capturas de tela de outros produtos usadas só como referência local
 docs/referencias-visuais/
+
+# Build da release
+dist-server/
+release/

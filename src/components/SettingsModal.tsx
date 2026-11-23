@@ -63,7 +63,9 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
   const [voice, setVoice] = useState(() => localStorage.getItem("zenith-voice") ?? "");
   const [rate, setRate] = useState(() => Number(localStorage.getItem("zenith-rate") ?? "1"));
 
+  const [modelsDir, setModelsDir] = useState("");
   useEffect(() => {
+    api.modelsDir().then((r) => setModelsDir(r.path)).catch(() => undefined);
     api.memory().then((r) => { setMemory(r.content); setMemoryLoaded(r.content); }).catch(() => undefined);
     api.disabledSkills().then((d) => { setDisabled(d); setDisabledLoaded(d); }).catch(() => undefined);
     api.mcp().then(setMcp).catch(() => setMcp([]));
@@ -155,7 +157,14 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
 
           {tab === "modelos" && (
             <>
-              <p className="lead">O modelo local roda dentro do Zenith (arquivos .gguf na pasta models/). Chaves de nuvem ficam cifradas neste computador.</p>
+              <p className="lead">O modelo local roda dentro do Zenith, a partir de arquivos .gguf na pasta de modelos. Chaves de nuvem ficam cifradas neste computador.</p>
+              <div className="row-list">
+                <div>
+                  <Icon name="folder" size={16} />
+                  <div className="grow"><div className="row-title">Pasta de modelos</div><small className="ellipsis">{modelsDir || "…"}</small></div>
+                  <button className="btn sm" onClick={() => api.modelsDir(true)}>Abrir</button>
+                </div>
+              </div>
               <div className="row-list">
                 {draft.providers.map((p) => (
                   <div key={p.id} className="provider-row">

@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import type { Conversation, Settings, StoredMessage, ToolCall, Role, ProviderConfig } from "./types.ts";
 
-const DATA_DIR = path.resolve(process.cwd(), ".zenith-data");
+import { DATA_DIR, DEFAULT_WORKSPACE } from "./paths.ts";
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new DatabaseSync(path.join(DATA_DIR, "zenith.db"));
@@ -357,7 +357,7 @@ export function getSettings(): Settings {
     providers: DEFAULT_PROVIDERS,
     defaultProvider: "local",
     defaultModel: "Qwen3-8B-Q4_K_M.gguf",
-    workspace: path.resolve(process.cwd(), "workspace"),
+    workspace: DEFAULT_WORKSPACE,
     mode: "ask",
     searxngUrl: "",
     alwaysAllow: [],

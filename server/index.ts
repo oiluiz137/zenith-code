@@ -1,5 +1,6 @@
 // Servidor do Zenith Code 1.0: API HTTP local (127.0.0.1), eventos em streaming (SSE) e interface estática.
 import http from "node:http";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,7 +31,7 @@ import type { Mode, ProviderConfig, Settings } from "./types.ts";
 
 const PORT = Number(process.env.ZENITH_PORT ?? 5178);
 const HOST = "127.0.0.1";
-const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+import { APP_ROOT, MODELS_DIR } from "./paths.ts";
 const DIST = path.join(APP_ROOT, "dist");
 const MASK = "********";
 
@@ -114,6 +115,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   }
 
   if (method === "GET" && p === "/api/artifacts") return send(res, 200, listArtifactMessages());
+
+  // Pasta onde ficam os modelos .gguf (abre no Explorer quando pedido).
+  if (p === "/api/models-dir") {
+    if (method === "POST" && process.platform === "win32") spawn("explorer.exe", [MODELS_DIR], { detached: true, stdio: "ignore" }).unref();
+    return send(res, 200, { path: MODELS_DIR });
+  }
 
   if (p === "/api/skills-disabled") {
     if (method === "GET") return send(res, 200, getKv<string[]>("disabledSkills", []));

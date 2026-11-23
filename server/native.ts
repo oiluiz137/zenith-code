@@ -6,9 +6,8 @@ import { fileURLToPath } from "node:url";
 import { getLlama, LlamaCompletion, type Llama, type LlamaModel, type LlamaContext } from "node-llama-cpp";
 import type { ChatMessage, ToolCall, ToolSpec } from "./types.ts";
 
-const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const MODELS_DIR = path.join(APP_ROOT, "models");
-fs.mkdirSync(MODELS_DIR, { recursive: true });
+import { MODELS_DIR } from "./paths.ts";
+export { MODELS_DIR };
 
 export const CONTEXT_SIZE = 8192;
 
