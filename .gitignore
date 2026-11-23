@@ -1,0 +1,17 @@
+# Dependências e build
+node_modules/
+dist/
+*.log
+
+# Dados locais do usuário (conversas, configurações, chaves cifradas)
+.zenith-data/
+
+# Pasta de trabalho de teste e configuração local
+workspace/
+.claude/
+
+# Modelos (arquivos grandes; cada usuário baixa o seu)
+models/*.gguf
+
+# Capturas de tela de outros produtos usadas só como referência local
+docs/referencias-visuais/
