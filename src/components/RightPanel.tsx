@@ -5,6 +5,8 @@ import { Icon, type IconName } from "./Icons";
 import { htmlBlocks } from "./ArtifactPreview";
 import { Terminal } from "./Terminal";
 import { MODE_LABELS } from "./Composer";
+import { EditsReview } from "./EditsReview";
+import type { AgentEdit } from "../api";
 
 export type PanelTab = "visao" | "terminal" | "tarefas" | "navegador" | "arquivos" | "alteracoes" | "auditoria";
 
@@ -14,7 +16,7 @@ export const PANEL_TABS: { id: PanelTab; label: string; icon: IconName }[] = [
   { id: "tarefas", label: "Tarefas em segundo plano", icon: "inbox" },
   { id: "navegador", label: "Navegador", icon: "globe" },
   { id: "arquivos", label: "Arquivos", icon: "folder" },
-  { id: "alteracoes", label: "Alterações (git)", icon: "share" },
+  { id: "alteracoes", label: "Alterações", icon: "share" },
   { id: "auditoria", label: "Auditoria", icon: "shield" },
 ];
 
@@ -33,6 +35,8 @@ interface Props {
   onClose: () => void;
   onNotice: (msg: string) => void;
   onOpenSettings: () => void;
+  edits: AgentEdit[];
+  onEditsChanged: () => void;
 }
 
 export function RightPanel(p: Props) {
@@ -56,7 +60,14 @@ export function RightPanel(p: Props) {
         {p.tab === "tarefas" && <div className="rpad"><JobsView conversationId={p.conversationId} onNotice={p.onNotice} /></div>}
         {p.tab === "navegador" && <BrowserView messages={p.messages} />}
         {p.tab === "arquivos" && <div className="rpad"><FilesView base={p.folder || p.workspace} openPath={openFile} /></div>}
-        {p.tab === "alteracoes" && <div className="rpad"><GitView conversationId={p.conversationId} streaming={p.streaming} /></div>}
+        {p.tab === "alteracoes" && (
+          <div className="rpad">
+            <h4 className="rsub">Edições do agente</h4>
+            {p.edits.length === 0 ? <p className="hint">O agente ainda não alterou arquivos nesta conversa.</p> : <EditsReview edits={p.edits} onChanged={p.onEditsChanged} onNotice={p.onNotice} compact />}
+            <h4 className="rsub">Git</h4>
+            <GitView conversationId={p.conversationId} streaming={p.streaming} />
+          </div>
+        )}
         {p.tab === "auditoria" && <div className="rpad"><Audit messages={p.messages} /></div>}
       </div>
     </aside>
@@ -97,6 +108,21 @@ function Overview(p: Props & { onOpenFile: (path: string) => void }) {
         <ContextView conversationId={p.conversationId} messages={p.messages} streaming={p.streaming} onCompact={p.onCompact} />
       </section>
 
+      <section className="rsec">
+        <button className="rrow clickable" onClick={() => p.onTab("alteracoes")}>
+          <span className="h4-inline">Alterações</span>
+          <Icon name="right" size={13} />
+          <span className="grow" />
+          <span className="muted small">
+            {(() => {
+              const pending = p.edits.filter((e) => e.reviewable && (e.status === "applied" || e.status === "partial") && !e.stale).length;
+              if (p.edits.length === 0) return "nenhuma edição";
+              return pending ? `${pending} para revisar` : `${p.edits.length} revisada${p.edits.length > 1 ? "s" : ""}`;
+            })()}
+          </span>
+        </button>
+      </section>
+
       <Connectors onOpenSettings={p.onOpenSettings} />
 
       <Outputs messages={p.messages} onPreview={p.onPreview} onOpenFile={p.onOpenFile} />
@@ -107,7 +133,7 @@ function Overview(p: Props & { onOpenFile: (path: string) => void }) {
 }
 
 function ContextView({ conversationId, messages, streaming, onCompact }: { conversationId: string | null; messages: StoredMessage[]; streaming: boolean; onCompact: () => void }) {
-  const [data, setData] = useState<{ limit: number; used: number; categories: { label: string; tokens: number }[] } | null>(null);
+  const [data, setData] = useState<{ limit: number; used: number; exact?: boolean; categories: { label: string; tokens: number }[] } | null>(null);
   useEffect(() => {
     if (!conversationId) {
       setData(null);
@@ -145,7 +171,7 @@ function ContextView({ conversationId, messages, streaming, onCompact }: { conve
         )}
       </div>
       <div className="rrow ctx-foot">
-        <span className="grow muted small">Estimativa: caracteres ÷ 4</span>
+        <span className="grow muted small" title={data.exact ? "Contado com o tokenizador do modelo carregado" : "O modelo local ainda não foi carregado; a contagem usa caracteres ÷ 4"}>{data.exact ? "Contagem exata do modelo" : "Estimativa (caracteres ÷ 4)"}</span>
         <button className="btn sm" onClick={onCompact} disabled={streaming}>Compactar sessão</button>
       </div>
     </>

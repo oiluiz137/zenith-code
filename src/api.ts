@@ -9,6 +9,20 @@ export interface Project {
   createdAt: number;
 }
 
+export interface AgentEdit {
+  id: string;
+  relPath: string;
+  toolCallId: string | null;
+  status: "applied" | "reverted" | "partial" | "accepted";
+  existed: boolean;
+  createdAt: number;
+  reviewable: boolean;
+  stale: boolean;
+  added: number;
+  removed: number;
+  hunks: { index: number; oldStart: number; newStart: number; lines: string[] }[];
+}
+
 export interface ScheduledTask {
   id: string;
   title: string;
@@ -57,13 +71,16 @@ export const api = {
   gitDiff: (path: string, conversationId?: string) =>
     call<{ ok: boolean; diff: string }>("GET", `/api/git/diff?path=${encodeURIComponent(path)}${conversationId ? `&conversationId=${conversationId}` : ""}`),
   context: (conversationId: string) =>
-    call<{ limit: number; used: number; categories: { label: string; tokens: number }[] }>("GET", `/api/context?conversationId=${conversationId}`),
+    call<{ limit: number; used: number; exact?: boolean; categories: { label: string; tokens: number }[] }>("GET", `/api/context?conversationId=${conversationId}`),
   jobs: () => call<{ id: string; command: string; cwd: string; status: string; output: string; startedAt: number }[]>("GET", "/api/jobs"),
   startJob: (command: string, conversationId?: string) => call<{ id: string }>("POST", "/api/jobs", { command, conversationId }),
   stopJob: (id: string) => call<{ ok: boolean }>("POST", `/api/jobs/${id}/stop`),
   getConversation: (id: string) => call<{ conversation: Conversation; messages: StoredMessage[] }>("GET", `/api/conversations/${id}`),
   updateConversation: (id: string, patch: { title?: string; pinned?: boolean; projectId?: string | null; folder?: string | null }) => call<Conversation>("PATCH", `/api/conversations/${id}`, patch),
   deleteConversation: (id: string) => call<{ ok: boolean }>("DELETE", `/api/conversations/${id}`),
+  edits: (conversationId: string) => call<AgentEdit[]>("GET", `/api/edits?conversationId=${encodeURIComponent(conversationId)}`),
+  revertEdit: (id: string, hunks?: number[]) => call<{ ok: boolean; message: string }>("POST", `/api/edits/${id}/revert`, hunks ? { hunks } : {}),
+  acceptEdit: (id: string) => call<{ ok: boolean; message: string }>("POST", `/api/edits/${id}/accept`, {}),
   schedules: () => call<ScheduledTask[]>("GET", "/api/schedules"),
   createSchedule: (t: Partial<ScheduledTask> & { prompt: string }) => call<ScheduledTask>("POST", "/api/schedules", t),
   updateSchedule: (id: string, patch: Partial<ScheduledTask>) => call<ScheduledTask>("PATCH", `/api/schedules/${id}`, patch),

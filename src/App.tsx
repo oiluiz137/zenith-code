@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Conversation, Mode as PermMode, Settings, StoredMessage, StreamEvent } from "../server/types";
-import { api, streamChat, type Bootstrap, type Project } from "./api";
+import { api, streamChat, type AgentEdit, type Bootstrap, type Project } from "./api";
 import { ArtifactPreview, htmlBlocks } from "./components/ArtifactPreview";
 import { Composer, MODE_LABELS, type Attachment } from "./components/Composer";
 import { Icon, type IconName } from "./components/Icons";
@@ -147,6 +147,17 @@ export default function App() {
   useEffect(() => {
     if (view === "projects") api.projects().then(setProjects).catch(() => undefined);
   }, [view]);
+
+  // Edições do agente nesta conversa (revisão por arquivo e por trecho).
+  const [edits, setEdits] = useState<AgentEdit[]>([]);
+  const loadEdits = () => {
+    if (!activeId) {
+      setEdits([]);
+      return;
+    }
+    api.edits(activeId).then(setEdits).catch(() => setEdits([]));
+  };
+  useEffect(loadEdits, [activeId, messages.length, streaming]);
 
   // Porcentagem do contexto usada, para o círculo ao lado do modo de permissão.
   const [ctxPct, setCtxPct] = useState<number | null>(0);
@@ -686,6 +697,9 @@ export default function App() {
                           key={m.id}
                           m={m}
                           results={toolResults}
+                          edits={edits.filter((e) => e.toolCallId && (m.toolCalls ?? []).some((t) => t.id === e.toolCallId))}
+                          onEditsChanged={loadEdits}
+                          onNotice={setToast}
                           isLast={m.id === lastAssistantId && !streaming}
                           onPreview={setPreview}
                           onRegenerate={m.id === lastAssistantId ? regenerateLast : undefined}
@@ -700,6 +714,12 @@ export default function App() {
                   </div>
                 </div>
                 {error && <div className="banner danger" onClick={() => setError("")} role="button" title="Clique para fechar">{error}</div>}
+                {ctxPct !== null && ctxPct >= 85 && !streaming && (
+                  <div className="banner warn ctx-warn">
+                    <span className="grow">Contexto {ctxPct >= 100 ? "cheio" : "quase cheio"} ({Math.round(ctxPct)}%). As mensagens mais antigas deixam de caber. Compacte a sessão para resumir o início e continuar.</span>
+                    <button className="btn sm" onClick={() => send("/compact")}>Compactar sessão</button>
+                  </div>
+                )}
                 <Composer {...composerProps} editing={!!editingId} onCancelEdit={() => { setEditingId(null); setInput(""); }} />
               </>
             )
@@ -722,6 +742,8 @@ export default function App() {
             onClose={() => setPanelOpen(false)}
             onNotice={setToast}
             onOpenSettings={() => openSettings("mcp")}
+            edits={edits}
+            onEditsChanged={loadEdits}
           />
         )}
       </main>

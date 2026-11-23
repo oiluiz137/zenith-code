@@ -298,8 +298,15 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
           {tab === "web" && (
             <label className="field"><span>Busca por SearXNG (opcional)</span>
               <input value={draft.searxngUrl} onChange={(e) => setDraft({ ...draft, searxngUrl: e.target.value })} placeholder="ex.: http://localhost:8080" />
-              <small>Vazio usa a busca padrão. Um SearXNG local mantém as buscas sob seu controle.</small>
+              <small>Vazio usa as fontes públicas em ordem (DuckDuckGo, DuckDuckGo Lite, Bing e, por último, Wikipédia). Elas às vezes bloqueiam pedidos automáticos; um SearXNG local evita isso e mantém as buscas sob seu controle.</small>
             </label>
+          )}
+          {tab === "web" && (
+            <>
+              <h3>Como subir um SearXNG local (com Docker)</h3>
+              <pre className="code-sample">docker run -d --name searxng -p 8080:8080 -e SEARXNG_BASE_URL=http://localhost:8080/ searxng/searxng</pre>
+              <p className="hint">Depois ative o formato JSON em settings.yml do SearXNG (search: formats: [html, json]) e preencha o campo acima com http://localhost:8080.</p>
+            </>
           )}
 
           {tab === "aparencia" && (

@@ -10,7 +10,17 @@ const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 export const MODELS_DIR = path.join(APP_ROOT, "models");
 fs.mkdirSync(MODELS_DIR, { recursive: true });
 
-const CONTEXT_SIZE = 8192;
+export const CONTEXT_SIZE = 8192;
+
+/** Conta tokens com o tokenizador do modelo carregado. Retorna null se nenhum modelo estiver carregado. */
+export function countTokens(text: string): number | null {
+  if (!loaded || !text) return loaded ? 0 : null;
+  try {
+    return loaded.model.tokenize(text).length;
+  } catch {
+    return null;
+  }
+}
 const STOP = ["<|im_end|>", "<|endoftext|>"];
 
 interface Loaded {

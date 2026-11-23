@@ -227,7 +227,15 @@ async function handleToolCall(
 
   const checkpoint = (name === "write_file" || name === "edit_file") ? snapshot(name, args, settings) : null;
   const result = isMcp ? await callMcpTool(name, args) : await executeTool(name, args, settings);
-  if (result.ok && checkpoint) addCheckpoint({ conversationId: p.conversationId, ...checkpoint });
+  if (result.ok && checkpoint) {
+    let after: string | null = null;
+    try {
+      after = fs.readFileSync(resolveInside(settings.workspace, checkpoint.relPath), "utf8");
+    } catch {
+      after = null;
+    }
+    addCheckpoint({ conversationId: p.conversationId, ...checkpoint, base: settings.workspace, toolCallId: callId, after });
+  }
   void runHooks("PostToolUse", name, args, settings.workspace);
   return result;
 }

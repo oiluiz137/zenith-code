@@ -160,29 +160,76 @@ db.exec(`
   );
 `);
 
+// Colunas acrescentadas depois da primeira versão (bancos antigos recebem as colunas aqui).
+for (const col of ["base TEXT", "tool_call_id TEXT", "after TEXT", "status TEXT NOT NULL DEFAULT 'applied'"]) {
+  try {
+    db.exec(`ALTER TABLE checkpoints ADD COLUMN ${col}`);
+  } catch {
+    /* coluna já existe */
+  }
+}
+
+export type CheckpointStatus = "applied" | "reverted" | "partial" | "accepted";
+
 export interface Checkpoint {
   id: string;
   conversationId: string;
   relPath: string;
   previous: string | null;
   existed: boolean;
+  /** Pasta de trabalho em que a edição aconteceu (null em checkpoints antigos). */
+  base: string | null;
+  toolCallId: string | null;
+  after: string | null;
+  status: CheckpointStatus;
   createdAt: number;
 }
 
-/** Guarda o conteúdo anterior de um arquivo antes de uma alteração do agente. */
-export function addCheckpoint(c: { conversationId: string; relPath: string; previous: string | null; existed: boolean }): void {
-  db.prepare("INSERT INTO checkpoints (id, conversation_id, rel_path, previous, existed, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .run(randomUUID(), c.conversationId, c.relPath, c.previous, c.existed ? 1 : 0, Date.now());
+function rowToCheckpoint(r: any): Checkpoint {
+  return {
+    id: r.id,
+    conversationId: r.conversation_id,
+    relPath: r.rel_path,
+    previous: r.previous,
+    existed: !!r.existed,
+    base: r.base ?? null,
+    toolCallId: r.tool_call_id ?? null,
+    after: r.after ?? null,
+    status: (r.status ?? "applied") as CheckpointStatus,
+    createdAt: r.created_at,
+  };
+}
+
+/** Guarda o conteúdo antes e depois de uma alteração do agente. */
+export function addCheckpoint(c: { conversationId: string; relPath: string; previous: string | null; existed: boolean; base?: string; toolCallId?: string; after?: string | null }): void {
+  db.prepare("INSERT INTO checkpoints (id, conversation_id, rel_path, previous, existed, base, tool_call_id, after, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'applied', ?)")
+    .run(randomUUID(), c.conversationId, c.relPath, c.previous, c.existed ? 1 : 0, c.base ?? null, c.toolCallId ?? null, c.after ?? null, Date.now());
 }
 
 export function listCheckpoints(limit = 20): Checkpoint[] {
   const rows = db.prepare("SELECT * FROM checkpoints ORDER BY created_at DESC LIMIT ?").all(limit) as any[];
-  return rows.map((r) => ({ id: r.id, conversationId: r.conversation_id, relPath: r.rel_path, previous: r.previous, existed: !!r.existed, createdAt: r.created_at }));
+  return rows.map(rowToCheckpoint);
 }
 
-/** Remove e devolve o checkpoint mais recente. */
+export function listConversationCheckpoints(conversationId: string): Checkpoint[] {
+  const rows = db.prepare("SELECT * FROM checkpoints WHERE conversation_id = ? ORDER BY created_at ASC").all(conversationId) as any[];
+  return rows.map(rowToCheckpoint);
+}
+
+export function getCheckpoint(id: string): Checkpoint | undefined {
+  const r = db.prepare("SELECT * FROM checkpoints WHERE id = ?").get(id);
+  return r ? rowToCheckpoint(r) : undefined;
+}
+
+export function setCheckpointStatus(id: string, status: CheckpointStatus, after?: string | null): void {
+  if (after === undefined) db.prepare("UPDATE checkpoints SET status = ? WHERE id = ?").run(status, id);
+  else db.prepare("UPDATE checkpoints SET status = ?, after = ? WHERE id = ?").run(status, after, id);
+}
+
+/** Remove e devolve o checkpoint aplicado mais recente (botão Desfazer). */
 export function popCheckpoint(): Checkpoint | undefined {
-  const [last] = listCheckpoints(1);
+  const r = db.prepare("SELECT * FROM checkpoints WHERE status = 'applied' ORDER BY created_at DESC LIMIT 1").get();
+  const last = r ? rowToCheckpoint(r) : undefined;
   if (last) db.prepare("DELETE FROM checkpoints WHERE id = ?").run(last.id);
   return last;
 }

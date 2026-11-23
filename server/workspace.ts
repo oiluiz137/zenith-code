@@ -131,10 +131,18 @@ export interface ContextCategory {
   tokens: number;
 }
 
-/** Estimativa de uso do contexto por categoria (caracteres / 4). */
-export function contextCategories(messages: { role: string; content: string }[], systemText: string): { limit: number; used: number; categories: ContextCategory[] } {
-  const limit = 8192;
-  const est = (s: string) => Math.ceil(s.length / 4);
+/**
+ * Uso do contexto por categoria. Com `count` (tokenizador do modelo carregado) a contagem é exata;
+ * sem ele, estima por caracteres ÷ 4.
+ */
+export function contextCategories(
+  messages: { role: string; content: string }[],
+  systemText: string,
+  count?: (s: string) => number | null,
+  limit = 8192,
+): { limit: number; used: number; exact: boolean; categories: ContextCategory[] } {
+  const exact = !!count && count("") !== null;
+  const est = (s: string) => (exact ? count!(s) ?? Math.ceil(s.length / 4) : Math.ceil(s.length / 4));
   const userAssistant = messages.filter((m) => m.role === "user" || m.role === "assistant").reduce((n, m) => n + est(m.content), 0);
   const tools = messages.filter((m) => m.role === "tool").reduce((n, m) => n + est(m.content), 0);
   const system = est(systemText);
@@ -142,6 +150,7 @@ export function contextCategories(messages: { role: string; content: string }[],
   return {
     limit,
     used,
+    exact,
     categories: [
       { label: "Mensagens", tokens: userAssistant },
       { label: "Resultados de ferramentas", tokens: tools },

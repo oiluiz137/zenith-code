@@ -9,7 +9,9 @@ import {
   listMessages, listCheckpoints, popCheckpoint, saveSettings, searchConversations, updateConversation,
   listProjects, createProject, getProject, updateProject, deleteProject, listProjectFiles, addProjectFile,
   deleteProjectFile, setConversationProject, truncateMessages, messageSeq, listArtifactMessages,
+  listConversationCheckpoints, getCheckpoint, setCheckpointStatus,
 } from "./store.ts";
+import { lineDiff, toHunks, revertHunks } from "./diff.ts";
 import { runTurn, memoryPath, memoryText, systemPrompt } from "./agent.ts";
 import { conversationFolder } from "./store.ts";
 import { listModels } from "./providers.ts";
@@ -17,7 +19,7 @@ import { resolvePermission, type Decision } from "./permissions.ts";
 import { resolveInside, runCommand } from "./tools.ts";
 import fsSync from "node:fs";
 import { listHooks } from "./hooks.ts";
-import { runtimeInfo } from "./native.ts";
+import { runtimeInfo, countTokens, CONTEXT_SIZE } from "./native.ts";
 import { ensureServers, mcpStatus } from "./mcp.ts";
 import { pickFolder, gitStatus, gitDiff, startJob, listJobs, stopJob, contextCategories } from "./workspace.ts";
 import { protectSecret, revealSecret, SECRETS_SUPPORTED } from "./secrets.ts";
@@ -348,7 +350,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     const settings = getSettings();
     const skills = loadSkills(settings.workspace);
     const msgs = conv ? listMessages(conv) : [];
-    return send(res, 200, contextCategories(msgs, systemPrompt(settings, settings.mode, skills)));
+    return send(res, 200, contextCategories(msgs, systemPrompt(settings, settings.mode, skills), countTokens, CONTEXT_SIZE));
   }
 
   if (method === "GET" && p === "/api/jobs") return send(res, 200, listJobs());
@@ -405,11 +407,67 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
   if (method === "GET" && p === "/api/checkpoints") return send(res, 200, listCheckpoints());
 
+  // Edições do agente nesta conversa, com os trechos alterados, para revisar, aceitar ou reverter.
+  if (method === "GET" && p === "/api/edits") {
+    const conv = url.searchParams.get("conversationId") ?? "";
+    const fallback = getSettings().workspace;
+    const list = listConversationCheckpoints(conv).map((cp) => {
+      const abs = resolveInside(cp.base ?? fallback, cp.relPath);
+      const current = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : null;
+      const reviewable = cp.after !== null;
+      const hunks = reviewable && (cp.previous ?? "").length + (cp.after ?? "").length < 400_000 ? toHunks(lineDiff(cp.previous ?? "", cp.after ?? "")) : [];
+      const added = hunks.reduce((n, h) => n + h.lines.filter((l) => l.startsWith("+")).length, 0);
+      const removed = hunks.reduce((n, h) => n + h.lines.filter((l) => l.startsWith("-")).length, 0);
+      return {
+        id: cp.id,
+        relPath: cp.relPath,
+        toolCallId: cp.toolCallId,
+        status: cp.status,
+        existed: cp.existed,
+        createdAt: cp.createdAt,
+        reviewable,
+        stale: reviewable && current !== cp.after,
+        added,
+        removed,
+        hunks,
+      };
+    });
+    return send(res, 200, list);
+  }
+
+  const editMatch = /^\/api\/edits\/([^/]+)\/(revert|accept)$/.exec(p);
+  if (editMatch && method === "POST") {
+    const cp = getCheckpoint(editMatch[1]);
+    if (!cp) return send(res, 404, { error: "Edição não encontrada." });
+    if (editMatch[2] === "accept") {
+      setCheckpointStatus(cp.id, "accepted");
+      return send(res, 200, { ok: true, message: `Alteração mantida: ${cp.relPath}` });
+    }
+    if (cp.after === null) return send(res, 409, { error: "Esta edição é anterior à revisão por trecho. Use Desfazer." });
+    const abs = resolveInside(cp.base ?? getSettings().workspace, cp.relPath);
+    const current = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : null;
+    if (current !== cp.after) return send(res, 409, { error: `${cp.relPath} mudou depois desta edição. Reverta as edições mais novas primeiro.` });
+    const body = await readBody(req);
+    const chosen: number[] | undefined = Array.isArray(body.hunks) ? body.hunks.map(Number) : undefined;
+    const total = toHunks(lineDiff(cp.previous ?? "", cp.after)).length;
+    if (!chosen || chosen.length >= total) {
+      if (cp.existed) fs.writeFileSync(abs, cp.previous ?? "", "utf8");
+      else if (fs.existsSync(abs)) fs.unlinkSync(abs);
+      setCheckpointStatus(cp.id, "reverted");
+      return send(res, 200, { ok: true, message: `Revertido: ${cp.relPath}${cp.existed ? "" : " (arquivo removido)"}` });
+    }
+    const next = revertHunks(cp.previous ?? "", cp.after, chosen);
+    fs.writeFileSync(abs, next, "utf8");
+    // O "depois" passa a ser o texto parcial; o "antes" continua o original, então dá para reverter o resto depois.
+    setCheckpointStatus(cp.id, "partial", next);
+    return send(res, 200, { ok: true, message: `${chosen.length} trecho(s) revertido(s) em ${cp.relPath}` });
+  }
+
   if (method === "POST" && p === "/api/checkpoints/undo") {
     const cp = popCheckpoint();
     if (!cp) return send(res, 404, { ok: false, message: "Nada para desfazer." });
     const settings = getSettings();
-    const abs = resolveInside(settings.workspace, cp.relPath);
+    const abs = resolveInside(cp.base ?? settings.workspace, cp.relPath);
     if (cp.existed) fs.writeFileSync(abs, cp.previous ?? "", "utf8");
     else if (fs.existsSync(abs)) fs.unlinkSync(abs);
     return send(res, 200, { ok: true, message: `Desfeito: ${cp.relPath}${cp.existed ? "" : " (arquivo removido)"}` });

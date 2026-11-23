@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { parseOutput, buildPrompt } from "../native.ts";
 import { parseSkill } from "../skills.ts";
-import { resolveInside, permissionKey, describeAction } from "../tools.ts";
+import { contextCategories } from "../workspace.ts";
+import { lineDiff, toHunks, revertHunks } from "../diff.ts";
+import { resolveInside, permissionKey, describeAction, parseDuckHtml, parseDuckLite, parseBing, parseWikipedia } from "../tools.ts";
 
 test("parseOutput lê chamada de ferramenta em <tool_call>", () => {
   const raw = 'Vou criar o arquivo.\n<tool_call>\n{"name": "write_file", "arguments": {"path": "a.md", "content": "oi"}}\n</tool_call>';
@@ -65,4 +67,56 @@ test("permissionKey agrupa comandos pelo primeiro termo", () => {
 
 test("describeAction resume comandos para o cartão de permissão", () => {
   assert.equal(describeAction("run_command", { command: "npm test" }), "Executar: npm test");
+});
+
+test("busca: lê resultados do DuckDuckGo com href antes da classe", () => {
+  const html = `<div class="result"><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexemplo.com%2Fa&amp;rut=x" class="result__a">Título <b>A</b></a>
+    <a class="result__snippet" href="#">Resumo do <b>A</b></a></div>
+    <div class="result"><a class="result__a" href="https://exemplo.com/b">B</a><a class="result__snippet">Resumo B</a></div>`;
+  const hits = parseDuckHtml(html);
+  assert.equal(hits.length, 2);
+  assert.deepEqual(hits[0], { title: "Título A", url: "https://exemplo.com/a", snippet: "Resumo do A" });
+  assert.equal(hits[1].url, "https://exemplo.com/b");
+});
+
+test("busca: lê DuckDuckGo Lite, Bing e Wikipédia", () => {
+  const lite = `<tr><td><a rel="nofollow" href="https://site.org/x" class='result-link'>Site X</a></td></tr><tr><td class='result-snippet'>Texto X</td></tr>`;
+  assert.deepEqual(parseDuckLite(lite)[0], { title: "Site X", url: "https://site.org/x", snippet: "Texto X" });
+  const target = Buffer.from("https://destino.com/p").toString("base64").replace(/=+$/, "");
+  const bing = `<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?!&amp;&amp;p=1&amp;u=a1${target}&amp;ntb=1">Destino</a></h2><div class="b_caption"><p>Descrição</p></div></li>`;
+  assert.deepEqual(parseBing(bing)[0], { title: "Destino", url: "https://destino.com/p", snippet: "Descrição" });
+  const wiki = JSON.stringify({ query: { search: [{ title: "Modelo de linguagem", snippet: "um <span>modelo</span>" }] } });
+  assert.equal(parseWikipedia(wiki)[0].url, "https://pt.wikipedia.org/wiki/Modelo_de_linguagem");
+  assert.deepEqual(parseWikipedia("não é json"), []);
+});
+test("contexto: usa o tokenizador quando disponível e estima sem ele", () => {
+  const msgs = [{ role: "user", content: "abcdefgh" }, { role: "tool", content: "1234" }];
+  const exact = contextCategories(msgs, "sys", (s) => s.length, 100);
+  assert.equal(exact.exact, true);
+  assert.equal(exact.used, 8 + 4 + 3);
+  const est = contextCategories(msgs, "sys", () => null, 100);
+  assert.equal(est.exact, false);
+  assert.equal(est.used, 2 + 1 + 1);
+});
+test("diff: separa trechos distantes e reverte só o escolhido", () => {
+  const base = Array.from({ length: 20 }, (_, i) => `linha ${i + 1}`);
+  const before = base.join("\n");
+  const changed = [...base];
+  changed[1] = "linha 2 nova";
+  changed[17] = "linha 18 nova";
+  changed.splice(10, 0, "inserida");
+  const after = changed.join("\n");
+  const hunks = toHunks(lineDiff(before, after));
+  assert.equal(hunks.length, 3);
+  assert.ok(hunks[0].lines.includes("-linha 2") && hunks[0].lines.includes("+linha 2 nova"));
+  const partial = revertHunks(before, after, [1]).split("\n");
+  assert.ok(!partial.includes("inserida"));
+  assert.ok(partial.includes("linha 2 nova") && partial.includes("linha 18 nova"));
+  assert.equal(revertHunks(before, after, [0, 1, 2]), before);
+  assert.equal(revertHunks(before, after, []), after);
+});
+
+test("diff: arquivo novo e arquivo igual", () => {
+  assert.deepEqual(toHunks(lineDiff("", "a\nb"))[0].lines, ["+a", "+b"]);
+  assert.equal(toHunks(lineDiff("x\ny", "x\ny")).length, 0);
 });

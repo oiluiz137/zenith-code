@@ -220,19 +220,122 @@ async function webSearch(query: string, searxngUrl: string): Promise<{ ok: boole
     const items = (json.results ?? []).slice(0, 8).map((r: any, i: number) => `${i + 1}. ${r.title}\n${r.url}\n${r.content ?? ""}`);
     return { ok: true, output: items.join("\n\n") || "Sem resultados." };
   }
-  const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
-    headers: { "user-agent": "ZenithCode/1.0" },
-  });
-  if (!res.ok) return { ok: false, output: `Busca respondeu ${res.status}` };
-  const html = await res.text();
-  const results: string[] = [];
-  const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) && results.length < 8) {
-    results.push(`${results.length + 1}. ${stripTags(m[2])}\n${decodeUrl(m[1])}\n${stripTags(m[3])}`);
+  // Sem SearXNG: tenta fontes públicas em ordem. Quando uma bloqueia (código 202, página de verificação)
+  // ou não traz nada, passa para a próxima.
+  const key = query.trim().toLowerCase();
+  const cached = searchCache.get(key);
+  if (cached && Date.now() - cached.at < 10 * 60_000) return { ok: true, output: cached.output };
+  const tried: string[] = [];
+  for (const source of SEARCH_SOURCES) {
+    try {
+      const res = await fetch(source.url(query), { method: source.method ?? "GET", body: source.body?.(query), headers: { ...BROWSER_HEADERS, ...(source.body ? { "content-type": "application/x-www-form-urlencoded" } : {}) } });
+      if (res.status !== 200) {
+        tried.push(`${source.name}: ${res.status === 202 ? "bloqueou (verificação anti-robô)" : `respondeu ${res.status}`}`);
+        continue;
+      }
+      const hits = source.parse(await res.text()).filter((h) => h.url && h.title).slice(0, 8);
+      if (hits.length === 0) {
+        tried.push(`${source.name}: nenhum resultado`);
+        continue;
+      }
+      const lines = hits.map((h, i) => `${i + 1}. ${h.title}\n${h.url}\n${h.snippet}`);
+      const output = `Fonte: ${source.name}\n\n${lines.join("\n\n")}`;
+      searchCache.set(key, { at: Date.now(), output });
+      return { ok: true, output };
+    } catch (err) {
+      tried.push(`${source.name}: ${(err as Error).message}`);
+    }
   }
-  return { ok: true, output: results.join("\n\n") || "Sem resultados (a busca padrão pode estar bloqueada; configure um SearXNG nas configurações)." };
+  return { ok: false, output: `Nenhuma fonte de busca respondeu (${tried.join("; ")}). Tente de novo em alguns minutos ou configure um SearXNG em Configurações > Pesquisa na web.` };
 }
+
+interface SearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+const BROWSER_HEADERS = {
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+  "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+  accept: "text/html,application/xhtml+xml",
+};
+
+/** Lê o valor de um atributo dentro de uma tag, em qualquer ordem e com aspas simples ou duplas. */
+function attr(tag: string, name: string): string {
+  return new RegExp(`\\s${name}=(["'])(.*?)\\1`, "i").exec(tag)?.[2] ?? "";
+}
+
+/** Separa a página em blocos que começam por cada ocorrência do marcador. */
+function blocks(html: string, marker: RegExp): string[] {
+  const idx: number[] = [];
+  const re = new RegExp(marker.source, "g" + marker.flags.replace("g", ""));
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) idx.push(m.index);
+  return idx.map((start, i) => html.slice(start, idx[i + 1] ?? start + 4000));
+}
+
+export function parseDuckHtml(html: string): SearchHit[] {
+  return blocks(html, /<a[^>]*class=["'][^"']*result__a/).map((b) => {
+    const tag = /<a[^>]*>/.exec(b)?.[0] ?? "";
+    const title = stripTags(/<a[^>]*>([\s\S]*?)<\/a>/.exec(b)?.[1] ?? "");
+    const snippet = stripTags(/class=["'][^"']*result__snippet[^>]*>([\s\S]*?)<\/(a|td|div)>/.exec(b)?.[1] ?? "");
+    return { title, url: decodeUrl(attr(tag, "href")), snippet };
+  });
+}
+
+export function parseDuckLite(html: string): SearchHit[] {
+  return blocks(html, /<a[^>]*class=["']result-link/).map((b) => {
+    const tag = /<a[^>]*>/.exec(b)?.[0] ?? "";
+    const title = stripTags(/<a[^>]*>([\s\S]*?)<\/a>/.exec(b)?.[1] ?? "");
+    const snippet = stripTags(/class=["']result-snippet["'][^>]*>([\s\S]*?)<\/td>/.exec(b)?.[1] ?? "");
+    return { title, url: decodeUrl(attr(tag, "href")), snippet };
+  });
+}
+
+export function parseBing(html: string): SearchHit[] {
+  return blocks(html, /<li[^>]*class=["'][^"']*b_algo/).map((b) => {
+    const h2 = /<h2[^>]*>([\s\S]*?)<\/h2>/.exec(b)?.[1] ?? "";
+    const tag = /<a[^>]*>/.exec(h2)?.[0] ?? "";
+    const snippet = stripTags(/<p[^>]*>([\s\S]*?)<\/p>/.exec(b)?.[1] ?? "");
+    return { title: stripTags(h2), url: decodeBingUrl(attr(tag, "href")), snippet };
+  });
+}
+
+/** Links do Bing às vezes passam por bing.com/ck/a com o destino em base64 no parâmetro u=a1... */
+function decodeBingUrl(href: string): string {
+  const raw = href.replace(/&amp;/g, "&");
+  const u = /[?&]u=a1([^&]+)/.exec(raw)?.[1];
+  if (!u) return raw;
+  try {
+    return Buffer.from(u.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+  } catch {
+    return raw;
+  }
+}
+
+const SEARCH_SOURCES: { name: string; url: (q: string) => string; method?: string; body?: (q: string) => string; parse: (html: string) => SearchHit[] }[] = [
+  { name: "DuckDuckGo", url: () => "https://html.duckduckgo.com/html/", method: "POST", body: (q) => `q=${encodeURIComponent(q)}&kl=br-pt`, parse: parseDuckHtml },
+  { name: "DuckDuckGo Lite", url: (q) => `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}&kl=br-pt`, parse: parseDuckLite },
+  { name: "Bing", url: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}&setlang=pt-br`, parse: parseBing },
+  { name: "Wikipédia (reserva; não cobre notícias)", url: (q) => `https://pt.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1&srlimit=8&srsearch=${encodeURIComponent(q)}`, parse: parseWikipedia },
+];
+
+export function parseWikipedia(json: string): SearchHit[] {
+  try {
+    const data = JSON.parse(json) as { query?: { search?: { title: string; snippet: string }[] } };
+    return (data.query?.search ?? []).map((r) => ({
+      title: r.title,
+      url: `https://pt.wikipedia.org/wiki/${encodeURIComponent(r.title.replace(/ /g, "_"))}`,
+      snippet: stripTags(r.snippet),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// Cache curto: a mesma consulta em 10 minutos não vai de novo à rede (reduz bloqueios por excesso de pedidos).
+const searchCache = new Map<string, { at: number; output: string }>();
 
 async function webFetch(url: string): Promise<{ ok: boolean; output: string }> {
   if (!/^https?:\/\//.test(url)) return { ok: false, output: "URL inválida." };
@@ -248,6 +351,10 @@ function stripTags(html: string): string {
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&#x27;|&#39;/g, "'")

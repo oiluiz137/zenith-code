@@ -3,6 +3,8 @@ import type { StoredMessage, ToolCall } from "../../server/types";
 import { Markdown } from "./Markdown";
 import { Icon } from "./Icons";
 import { htmlBlocks } from "./ArtifactPreview";
+import { EditsReview } from "./EditsReview";
+import type { AgentEdit } from "../api";
 
 export interface LiveTool {
   id: string;
@@ -156,12 +158,13 @@ function ToolGroup({ calls, results }: { calls: { id: string; name: string; args
   );
 }
 
-export function AssistantMessage({ m, results, onPreview, onRegenerate, disabled, feedback, onFeedback, isLast }: { m: StoredMessage; results?: Record<string, string>; onPreview: (html: string) => void; onRegenerate?: () => void; disabled: boolean; feedback?: string; onFeedback?: (v: "up" | "down" | null) => void; isLast?: boolean }) {
+export function AssistantMessage({ m, results, edits = [], onEditsChanged, onNotice, onPreview, onRegenerate, disabled, feedback, onFeedback, isLast }: { m: StoredMessage; results?: Record<string, string>; edits?: AgentEdit[]; onEditsChanged?: () => void; onNotice?: (msg: string) => void; onPreview: (html: string) => void; onRegenerate?: () => void; disabled: boolean; feedback?: string; onFeedback?: (v: "up" | "down" | null) => void; isLast?: boolean }) {
   const artifacts = htmlBlocks(m.content);
   const calls: ToolCall[] = m.toolCalls ?? [];
   return (
     <div className={`msg assistant ${isLast ? "last" : ""}`}>
       {calls.length > 0 && <ToolGroup calls={calls} results={results} />}
+      {edits.length > 0 && <EditsReview edits={edits} onChanged={() => onEditsChanged?.()} onNotice={(msg) => onNotice?.(msg)} />}
       {m.content ? <div className="body"><Markdown text={m.content} /></div> : null}
       {artifacts.map((html, i) => {
         const title = /<title>(.*?)<\/title>/i.exec(html)?.[1] ?? `Página HTML ${artifacts.length > 1 ? i + 1 : ""}`;
