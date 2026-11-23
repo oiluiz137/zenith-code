@@ -11,6 +11,7 @@ import { PANEL_TABS, RightPanel, type PanelTab } from "./components/RightPanel";
 import { SettingsModal, type Tab as SettingsTab } from "./components/SettingsModal";
 import { Sidebar, type Mode as SessionMode, type View } from "./components/Sidebar";
 import { ViewRouter } from "./components/Views";
+import { askConfirm, askText, DialogHost } from "./components/Dialogs";
 
 const TEXT_EXT = /\.(md|txt|csv|json|ts|tsx|js|jsx|py|html|css|yml|yaml|xml|log|sql|sh|ps1)$/i;
 
@@ -208,7 +209,7 @@ export default function App() {
     const r = await api.pickFolder();
     if (r.path) return r.path;
     if (r.error) {
-      const typed = window.prompt("Caminho da pasta (ex.: E:\\projetos\\meu-app)");
+      const typed = await askText({ title: "Pasta de trabalho", label: "Não foi possível abrir o seletor. Digite o caminho da pasta:", placeholder: "ex.: E:\\projetos\\meu-app" });
       return typed && typed.trim() ? typed.trim() : null;
     }
     return null;
@@ -291,7 +292,7 @@ export default function App() {
 
   async function deleteConversation(id: string) {
     const c = conversations.find((x) => x.id === id);
-    if (!window.confirm(`Excluir a conversa "${c?.title ?? ""}"? Isso não pode ser desfeito.`)) return;
+    if (!(await askConfirm({ title: "Excluir conversa", message: `Excluir "${c?.title ?? ""}"? Isso não pode ser desfeito.`, confirm: "Excluir", danger: true }))) return;
     await api.deleteConversation(id);
     if (activeId === id) setActiveId(null);
     await refreshConversations();
@@ -303,14 +304,14 @@ export default function App() {
   }
 
   async function renameConversation(c: Conversation) {
-    const title = window.prompt("Novo título", c.title);
+    const title = await askText({ title: "Renomear conversa", label: "Novo título", initial: c.title, confirm: "Renomear" });
     if (!title || !title.trim()) return;
     await api.updateConversation(c.id, { title: title.trim() });
     await refreshConversations();
   }
 
   async function createProject() {
-    const name = window.prompt("Nome do projeto");
+    const name = await askText({ title: "Novo projeto", label: "Nome do projeto", placeholder: "ex.: Site da loja", confirm: "Criar" });
     if (!name || !name.trim()) return;
     const folder = await chooseFolder();
     const p = await api.createProject(name.trim(), "", folder);
@@ -765,6 +766,7 @@ export default function App() {
       )}
       {preview && <ArtifactPreview html={preview} onClose={() => setPreview(null)} />}
       {toast && <div className="toast" role="status">{toast}</div>}
+      <DialogHost />
     </div>
   );
 }

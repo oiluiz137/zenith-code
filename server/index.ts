@@ -33,6 +33,13 @@ const PORT = Number(process.env.ZENITH_PORT ?? 5178);
 const HOST = "127.0.0.1";
 import { APP_ROOT, MODELS_DIR } from "./paths.ts";
 const DIST = path.join(APP_ROOT, "dist");
+const VERSION: string = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(APP_ROOT, "package.json"), "utf8")).version ?? "1.0.0";
+  } catch {
+    return "1.0.0";
+  }
+})();
 const MASK = "********";
 
 const MIME: Record<string, string> = {
@@ -80,7 +87,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     const settings = getSettings();
     return send(res, 200, {
       name: "Zenith Code",
-      version: "1.0.0",
+      version: VERSION,
       settings: maskSettings(settings),
       conversations: listConversations(),
       skills: loadSkills(settings.workspace).map((s) => ({ name: s.name, description: s.description })),
@@ -504,8 +511,22 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, url: U
   void req;
 }
 
+// No app de desktop, o Electron passa uma senha por sessão (ZENITH_TOKEN) e a envia em todo pedido
+// da janela. Outros programas do computador não conseguem usar o servidor sem ela.
+const TOKEN = process.env.ZENITH_TOKEN ?? "";
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${HOST}:${PORT}`);
+  // Só aceita pedidos endereçados a este computador (evita ataques de DNS rebinding).
+  const host = (req.headers.host ?? "").replace(/:\d+$/, "");
+  if (host !== "127.0.0.1" && host !== "localhost") {
+    res.writeHead(403).end("Host não permitido");
+    return;
+  }
+  if (TOKEN && req.headers["x-zenith-token"] !== TOKEN) {
+    res.writeHead(403).end("Acesso negado");
+    return;
+  }
   try {
     if (url.pathname.startsWith("/api/")) await handleApi(req, res, url);
     else serveStatic(req, res, url);
@@ -517,5 +538,15 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   startScheduler();
-  console.log(`Zenith Code 1.0 em http://${HOST}:${PORT}`);
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : PORT;
+  console.log(`Zenith Code 1.0 em http://${HOST}:${port}`);
+  // Rodando dentro do app de desktop (utilityProcess do Electron): avisa a janela que está pronto.
+  const parentPort = (process as unknown as { parentPort?: { postMessage: (m: unknown) => void } }).parentPort;
+  parentPort?.postMessage({ type: "ready", port });
+});
+
+server.on("error", (err) => {
+  console.error(`Falha ao iniciar o servidor: ${err.message}`);
+  process.exit(1);
 });

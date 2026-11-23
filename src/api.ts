@@ -48,6 +48,9 @@ export interface Bootstrap {
   hooks: Record<string, unknown>;
 }
 
+/** Ponte do app de desktop (Electron); ausente quando o Zenith roda no navegador. */
+export const desktop = (window as unknown as { zenithDesktop?: { isDesktop: true; platform: string; pickFolder: (title?: string) => Promise<string | null>; openPath: (p: string) => Promise<string> } }).zenithDesktop;
+
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
@@ -64,7 +67,11 @@ export const api = {
   conversations: () => call<Conversation[]>("GET", "/api/conversations"),
   createConversation: (title?: string, kind: "chat" | "cowork" | "code" = "chat", folder?: string | null) =>
     call<Conversation>("POST", "/api/conversations", { title, kind, folder: folder ?? null }),
-  pickFolder: () => call<{ path: string | null; error?: string }>("POST", "/api/pick-folder"),
+  // No app de desktop usa o seletor nativo do sistema; no navegador, o do servidor.
+  pickFolder: async (): Promise<{ path: string | null; error?: string }> => {
+    if (desktop) return { path: await desktop.pickFolder() };
+    return call<{ path: string | null; error?: string }>("POST", "/api/pick-folder");
+  },
   gitStatus: (conversationId?: string) =>
     call<{ folder: string; isRepo: boolean; branch?: string; files: { status: string; path: string }[]; error?: string }>(
       "GET", `/api/git/status${conversationId ? `?conversationId=${conversationId}` : ""}`),

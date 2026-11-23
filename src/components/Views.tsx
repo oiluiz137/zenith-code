@@ -3,6 +3,7 @@ import type { Conversation } from "../../server/types";
 import { api, type Project, type ScheduledTask } from "../api";
 import { Icon } from "./Icons";
 import { htmlBlocks } from "./ArtifactPreview";
+import { askConfirm } from "./Dialogs";
 
 interface Props {
   view: "projects" | "automations" | "agents" | "artifacts";
@@ -200,7 +201,7 @@ function AutomationsView(p: Props) {
               <button className="btn sm" onClick={() => api.runSchedule(t.id).then(() => { p.onToast("Executando agora…"); setTimeout(load, 800); })} disabled={t.lastStatus === "executando"}>
                 <Icon name="play" size={13} /> Executar
               </button>
-              <button className="icon-btn" onClick={() => { if (window.confirm(`Excluir a tarefa "${t.title}"?`)) api.deleteSchedule(t.id).then(load); }} title="Excluir" aria-label="Excluir"><Icon name="trash" size={15} /></button>
+              <button className="icon-btn" onClick={async () => { if (await askConfirm({ title: "Excluir tarefa", message: `Excluir a tarefa "${t.title}"?`, confirm: "Excluir", danger: true })) api.deleteSchedule(t.id).then(load); }} title="Excluir" aria-label="Excluir"><Icon name="trash" size={15} /></button>
             </div>
           ))}
         </div>

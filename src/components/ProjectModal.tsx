@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Project } from "../api";
 import { Icon } from "./Icons";
+import { askConfirm } from "./Dialogs";
 
 interface Props {
   project: Project;
@@ -63,7 +64,7 @@ export function ProjectModal({ project, onChanged, onDeleted, onClose }: Props) 
   }
 
   async function remove() {
-    if (!window.confirm(`Excluir o projeto "${project.name}"? As conversas são mantidas, sem projeto.`)) return;
+    if (!(await askConfirm({ title: "Excluir projeto", message: `Excluir "${project.name}"? As conversas são mantidas, sem projeto.`, confirm: "Excluir", danger: true }))) return;
     await api.deleteProject(project.id);
     onDeleted();
   }

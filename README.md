@@ -9,9 +9,9 @@ Baixe em [Releases](https://github.com/oiluiz137/zenith-code/releases):
 - **ZenithCode-x.y.z-Setup.exe**: instala para o seu usuário, sem administrador, com atalhos e desinstalador.
 - **ZenithCode-x.y.z-portable.zip**: extraia e abra `Zenith Code.exe`.
 
-O `Zenith Code.exe` inicia o servidor local sozinho e abre o app numa janela própria. Os dados ficam em `%LOCALAPPDATA%\Zenith Code` (na versão portátil, na pasta `data`). Coloque os modelos `.gguf` na pasta de modelos; o app mostra um botão para abri-la.
+O Zenith Code é um app de desktop (Electron): abre numa janela própria, sem navegador. O servidor do agente roda dentro do app, numa porta escolhida na hora e protegida por uma senha da sessão, e fecha junto com a janela. Os dados ficam em `%LOCALAPPDATA%\Zenith Code` (na versão portátil, na pasta `data`). Coloque os modelos `.gguf` na pasta de modelos; o app mostra um botão para abri-la.
 
-Para gerar o instalador a partir do código: `npm run release` (os arquivos saem em `release/`).
+Para abrir o app de desktop a partir do código: `npm run desktop`. Para gerar o instalador: `npm run release` (os arquivos saem em `release/`).
 
 ## Rodar a partir do código
 

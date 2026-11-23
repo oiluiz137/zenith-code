@@ -522,3 +522,21 @@ kbd { font-family: var(--font); font-size: 12px; color: var(--muted); border: 1p
 .edits.compact .edit-row .btn { padding: 3px 7px; }
 .rsub { margin: 10px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
 .rsub:first-child { margin-top: 0; }
+
+/* App de desktop: a faixa de cima arrasta a janela; os botões de minimizar/maximizar/fechar ficam à direita. */
+html.desktop .sb-head, html.desktop .topbar, html.desktop .rpanel-head, html.desktop .settings-nav-title { -webkit-app-region: drag; }
+html.desktop .sb-head button, html.desktop .topbar button, html.desktop .topbar a, html.desktop .topbar select, html.desktop .rpanel-head button,
+html.desktop .menu, html.desktop .popover, html.desktop .mode-icons, html.desktop .title-wrap .menu-wrap { -webkit-app-region: no-drag; }
+html.desktop .rpanel-head { padding-right: 150px; }
+html.desktop .main:not(:has(.rpanel)) .topbar { padding-right: 150px; }
+html.desktop .settings-page { padding-top: 0; }
+html.desktop .settings-content { padding-top: 54px; }
+html.desktop .settings-main::before { content: ""; position: absolute; top: 0; left: 0; right: 150px; height: 40px; -webkit-app-region: drag; }
+html.desktop .settings-main { position: relative; }
+
+/* Diálogos próprios */
+.modal.dialog { width: min(440px, 92vw); }
+.dialog-title { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
+.dialog-text { margin: 0; color: var(--ink-2); line-height: 1.5; }
+.btn.danger-solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.danger-solid:hover:not(:disabled) { filter: brightness(1.08); }

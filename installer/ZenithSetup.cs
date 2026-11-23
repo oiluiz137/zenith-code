@@ -15,7 +15,8 @@ using Microsoft.Win32;
 static class ZenithSetup
 {
     const string AppName = "Zenith Code";
-    const string Version = "1.0.0";
+    // Gerado pelo build-release.ps1 (BuildInfo.Version) a partir do package.json.
+    const string Version = BuildInfo.Version;
     const string Publisher = "oiluiz137";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ZenithCode";
 
@@ -56,16 +57,25 @@ static class ZenithSetup
     public static void Install(string dir, bool desktop, bool startMenu, bool registry, Action<int, string> progress)
     {
         if (progress == null) progress = (p, s) => { };
-        // Atualização: remove as pastas do programa (os dados do usuário ficam em outra pasta e não são tocados).
-        foreach (var sub in new[] { "app", "runtime" })
+        // Atualização: a pasta do programa só tem arquivos do Zenith (os dados do usuário ficam em
+        // %LOCALAPPDATA%\Zenith Code), então a versão anterior é removida inteira antes de copiar a nova.
+        string fullDir = Path.GetFullPath(dir).TrimEnd('\\');
+        foreach (var p in Process.GetProcessesByName(AppName))
         {
-            var d = Path.Combine(dir, sub);
-            if (Directory.Exists(d))
+            string path = null;
+            try { path = p.MainModule.FileName; } catch { }
+            if (path != null && path.StartsWith(fullDir + "\\", StringComparison.OrdinalIgnoreCase))
+                throw new Exception("O Zenith Code está aberto. Feche o programa e tente de novo.");
+        }
+        if (File.Exists(Path.Combine(dir, AppName + ".exe")))
+        {
+            progress(2, "Removendo a versão anterior…");
+            try
             {
-                progress(2, "Removendo a versão anterior…");
-                try { Directory.Delete(d, true); }
-                catch (Exception e) { throw new Exception("Não foi possível substituir a versão instalada. Feche o Zenith Code e tente de novo.\n" + e.Message); }
+                foreach (var d in Directory.GetDirectories(dir)) Directory.Delete(d, true);
+                foreach (var f in Directory.GetFiles(dir)) File.Delete(f);
             }
+            catch (Exception e) { throw new Exception("Não foi possível substituir a versão instalada. Feche o Zenith Code e tente de novo.\n" + e.Message); }
         }
         Directory.CreateDirectory(dir);
         using (var payload = OpenPayload())
