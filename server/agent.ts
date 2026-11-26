@@ -6,6 +6,7 @@ import type { ChatMessage, Mode, ProviderConfig, Settings, StreamEvent, ToolSpec
 import { addCheckpoint, appendMessage, conversationFolder, conversationProjectId, getKv, getProject, getSettings, listMessages, listProjectFiles, saveSettings, setKv } from "./store.ts";
 import { streamChat } from "./providers.ts";
 import { APP_ROOT } from "./paths.ts";
+import { deepResearch, sourcesMarkdown } from "./research.ts";
 import { stripThinking } from "./native.ts";
 import { TOOLS, executeTool, describeAction, permissionKey, resolveInside, type Risk } from "./tools.ts";
 import { requestPermission, type Decision } from "./permissions.ts";
@@ -110,6 +111,33 @@ export async function runTurn(p: TurnParams): Promise<void> {
       return;
     }
 
+    // Comando /pesquisa <tema>: pesquisa profunda com várias buscas, leitura das páginas e relatório com citações.
+    const research = /^\/pesquisa(?:-profunda)?\s+([\s\S]+)$/.exec(userText.trim());
+    if (research || /^\/pesquisa(?:-profunda)?$/.test(userText.trim())) {
+      appendMessage(p.conversationId, { role: "user", content: p.text });
+      const finish = (reply: string) => {
+        appendMessage(p.conversationId, { role: "assistant", content: reply });
+        p.emit({ type: "delta", text: reply });
+        p.emit({ type: "done" });
+      };
+      if (!research) return finish("Use assim: `/pesquisa <tema>`. O Zenith faz várias buscas na web, lê as páginas e escreve um relatório com citações numeradas e a lista de fontes.");
+      if (p.toolFlags && p.toolFlags.web === false) return finish("A pesquisa na web está desligada nesta conversa. Ligue em Ferramentas (ícone abaixo da caixa de texto).");
+      const ask = async (sys: string, user: string, onDelta?: (t: string) => void): Promise<string> => {
+        const r = await streamChat({ provider, model, messages: [{ role: "system", content: sys }, { role: "user", content: user }], tools: [], signal: p.signal, onDelta: onDelta ?? (() => undefined), temperature: Math.min(settings.temperature, 0.5), topP: settings.topP, maxTokens: Math.max(settings.maxTokens, 2048) });
+        return r.content;
+      };
+      const out = await deepResearch({ topic: research[1].trim(), settings, compact: provider.kind === "native", signal: p.signal, emit: p.emit, ask });
+      const tail = sourcesMarkdown(out.sources);
+      if (tail) p.emit({ type: "delta", text: tail });
+      // Guarda as buscas e leituras como chamadas de ferramenta (aparecem recolhidas) e depois o relatório.
+      if (out.steps.length) {
+        appendMessage(p.conversationId, { role: "assistant", content: "", toolCalls: out.steps.map((s) => s.call) });
+        for (const s of out.steps) appendMessage(p.conversationId, { role: "tool", content: s.output, toolCallId: s.call.id, toolName: s.call.name });
+      }
+      appendMessage(p.conversationId, { role: "assistant", content: out.report + tail });
+      p.emit({ type: "done" });
+      return;
+    }
     // Comando /compact: resume a conversa antiga e guarda o resumo para os próximos turnos.
     if (userText.trim() === "/compact") {
       appendMessage(p.conversationId, { role: "user", content: p.text });

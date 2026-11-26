@@ -27,7 +27,7 @@ const CHAT_SUGGESTIONS: { label: string; text: string; icon: IconName }[] = [
   { label: "Escrever", text: "Me ajude a escrever um e-mail curto e educado pedindo um prazo maior.", icon: "pencil" },
   { label: "Aprender", text: "Explique de forma simples como funciona um modelo de linguagem local.", icon: "book" },
   { label: "Código", text: "Crie uma página HTML de contador com botões.", icon: "code" },
-  { label: "Pesquisar", text: "Pesquise na web: notícias de IA local desta semana.", icon: "globe" },
+  { label: "Pesquisar", text: "/pesquisa Quais são os melhores modelos de IA para rodar localmente em um PC com 16 GB de RAM?", icon: "globe" },
 ];
 
 const CODE_SUGGESTIONS: { label: string; text: string; icon: IconName }[] = [
@@ -453,6 +453,8 @@ export default function App() {
   }
 
   const skills = boot?.skills ?? [];
+  // O limite de contexto medido é o do modelo local; em provedores de nuvem o círculo e o aviso não se aplicam.
+  const ctxShown = settings.providers.find((x) => x.id === providerId)?.kind === "native" ? ctxPct : null;
   const inChat = view === "chat";
   const showWelcome = inChat && messages.length === 0 && !streaming;
   const folderPath = folderOfActive || settings.workspace;
@@ -500,7 +502,7 @@ export default function App() {
     toolFlags,
     onToolFlags: setToolFlags,
     skills,
-    contextPct: ctxPct,
+    contextPct: ctxShown,
     onContext: () => openPanel("visao"),
     onOpenView: (v: "projects" | "settings") => setView(v),
     onToast: setToast,
@@ -726,9 +728,9 @@ export default function App() {
                   </div>
                 </div>
                 {error && <div className="banner danger" onClick={() => setError("")} role="button" title="Clique para fechar">{error}</div>}
-                {ctxPct !== null && ctxPct >= 85 && !streaming && (
+                {ctxShown !== null && ctxShown >= 85 && !streaming && (
                   <div className="banner warn ctx-warn">
-                    <span className="grow">Contexto {ctxPct >= 100 ? "cheio" : "quase cheio"} ({Math.round(ctxPct)}%). As mensagens mais antigas deixam de caber. Compacte a sessão para resumir o início e continuar.</span>
+                    <span className="grow">Contexto {ctxShown >= 100 ? "cheio" : "quase cheio"} ({Math.round(ctxShown)}%). As mensagens mais antigas deixam de caber. Compacte a sessão para resumir o início e continuar.</span>
                     <button className="btn sm" onClick={() => send("/compact")}>Compactar sessão</button>
                   </div>
                 )}

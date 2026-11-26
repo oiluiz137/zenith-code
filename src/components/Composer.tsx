@@ -92,6 +92,7 @@ export function Composer(p: Props) {
   // Sugestões de skills ao digitar "/" no início.
   const slash = p.value.startsWith("/") && !p.value.includes(" ") ? p.value.slice(1).toLowerCase() : null;
   const builtins = [
+    { name: "pesquisa", description: "Pesquisa profunda na web, com relatório e citações" },
     { name: "compact", description: "Resume a conversa para liberar contexto" },
     { name: "init", description: "Cria um ZENITH.md com o contexto do projeto" },
     { name: "memory", description: "Mostra a memória persistente" },

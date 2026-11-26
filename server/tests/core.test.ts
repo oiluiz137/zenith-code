@@ -7,6 +7,7 @@ import { parseSkill } from "../skills.ts";
 import { contextCategories } from "../workspace.ts";
 import { lineDiff, toHunks, revertHunks } from "../diff.ts";
 import { systemPrompt } from "../agent.ts";
+import { parseSearchOutput, parseQueries, dropUnknownCitations, sourcesMarkdown, keywords, relevance } from "../research.ts";
 import { resolveInside, permissionKey, describeAction, parseDuckHtml, parseDuckLite, parseBing, parseWikipedia } from "../tools.ts";
 
 test("parseOutput lê chamada de ferramenta em <tool_call>", () => {
@@ -136,4 +137,20 @@ test("raciocínio: prompt aberto, extração e limpeza do histórico", () => {
   assert.equal(extractThinking("<think>\nainda pensando"), "ainda pensando");
   assert.equal(stripThinking("<think>x</think>\n\nresposta"), "resposta");
   assert.equal(parseOutput("<think>\ncortou no meio").content, "");
+});
+test("pesquisa: lê resultados, plano de buscas e citações", () => {
+  const out = "Fonte: Bing\n\n1. Título A\nhttps://a.com/x\nResumo A\n\n2. Título B\nhttps://b.org/y\nResumo B";
+  assert.deepEqual(parseSearchOutput(out).map((h) => h.url), ["https://a.com/x", "https://b.org/y"]);
+  assert.deepEqual(parseQueries('Aqui: ["um", "dois", "um"]', "tema"), ["um", "dois"]);
+  assert.deepEqual(parseQueries("1. primeira busca\n2. segunda busca", "tema"), ["primeira busca", "segunda busca"]);
+  assert.deepEqual(parseQueries("", "tema"), ["tema"]);
+  assert.equal(dropUnknownCitations("Fato [1] e outro [7][2].", 3), "Fato [1] e outro [2].");
+  assert.ok(sourcesMarkdown([{ n: 1, title: "A [x]", url: "https://a.com", snippet: "", excerpt: "" }]).includes("[1] [A x](https://a.com)"));
+});
+test("pesquisa: descarta resultados que não falam do tema", () => {
+  const words = keywords("O que é o Model Context Protocol (MCP)?");
+  assert.ok(words.includes("model") && words.includes("protocol") && !words.includes("como"));
+  assert.ok(relevance(words, "What is the Model Context Protocol?", "") >= 3);
+  assert.equal(relevance(words, "Popular 3D models - Sketchfab", "Download free 3D assets"), 1);
+  assert.equal(relevance(words, "Receita de bolo", "farinha e ovos"), 0);
 });

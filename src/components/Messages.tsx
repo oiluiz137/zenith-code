@@ -58,6 +58,17 @@ function argPreview(args: Record<string, unknown>): string {
   return typeof main === "string" ? main : JSON.stringify(args).slice(0, 120);
 }
 
+/** Em relatórios de pesquisa, transforma [n] no texto em link para a fonte n da lista "## Fontes". */
+export function linkCitations(text: string): string {
+  const at = text.search(/^##\s+Fontes\s*$/m);
+  if (at < 0) return text;
+  const urls = new Map<string, string>();
+  for (const m of text.slice(at).matchAll(/^\[(\d+)\]\s+\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gm)) urls.set(m[1], m[2]);
+  if (urls.size === 0) return text;
+  const body = text.slice(0, at).replace(/\[(\d+)\](?!\()/g, (all, n) => (urls.has(n) ? `[\\[${n}\\]](${urls.get(n)})` : all));
+  return body + text.slice(at);
+}
+
 /** Separa o raciocínio guardado no começo da resposta (<think>…</think>) do texto final. */
 export function splitThinking(content: string): { thinking: string; text: string } {
   const m = /^\s*<think>([\s\S]*?)<\/think>\s*/.exec(content);
@@ -190,7 +201,7 @@ export function AssistantMessage({ m, results, edits = [], onEditsChanged, onNot
       {calls.length > 0 && <ToolGroup calls={calls} results={results} />}
       {edits.length > 0 && <EditsReview edits={edits} onChanged={() => onEditsChanged?.()} onNotice={(msg) => onNotice?.(msg)} />}
       {thinking && <Thinking text={thinking} />}
-      {answer ? <div className="body"><Markdown text={answer} /></div> : null}
+      {answer ? <div className="body"><Markdown text={linkCitations(answer)} /></div> : null}
       {artifacts.map((html, i) => {
         const title = /<title>(.*?)<\/title>/i.exec(html)?.[1] ?? `Página HTML ${artifacts.length > 1 ? i + 1 : ""}`;
         return (
