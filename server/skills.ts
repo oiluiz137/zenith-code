@@ -43,3 +43,42 @@ export function skillsIndex(skills: Skill[]): string {
   if (!skills.length) return "Nenhuma skill instalada.";
   return skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
 }
+
+const NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+export function validSkillName(name: string): boolean {
+  return NAME_RE.test(name);
+}
+
+/** Pasta de uma skill do projeto (editável): <workspace>/.zenith/skills/<nome>. */
+export function projectSkillDir(workspace: string, name: string): string {
+  return path.join(workspace, ".zenith", "skills", name);
+}
+
+/** Texto completo do SKILL.md e de onde ele vem ("projeto" = editável, "app" = vem com o Zenith). */
+export function readSkillFile(workspace: string, name: string): { content: string; origin: "projeto" | "app" } | null {
+  for (const [dir, origin] of [[projectSkillDir(workspace, name), "projeto"], [path.join(BUNDLED_SKILLS, name), "app"]] as const) {
+    const file = path.join(dir, "SKILL.md");
+    if (validSkillName(name) && fs.existsSync(file)) return { content: fs.readFileSync(file, "utf8"), origin };
+  }
+  return null;
+}
+
+/** Grava a skill no projeto (cria ou substitui). Retorna uma mensagem de erro se o texto não for uma skill válida. */
+export function writeProjectSkill(workspace: string, name: string, content: string): string | null {
+  if (!validSkillName(name)) return "Nome inválido: use letras minúsculas, números e hífens (ex.: revisar-codigo).";
+  const skill = parseSkill(content, "");
+  if (!skill) return "O texto precisa começar com um bloco --- com name: e description: e depois as instruções.";
+  if (skill.name !== name) return `O campo name (${skill.name}) precisa ser igual ao nome da skill (${name}).`;
+  const dir = projectSkillDir(workspace, name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "SKILL.md"), content, "utf8");
+  return null;
+}
+
+export function deleteProjectSkill(workspace: string, name: string): boolean {
+  const dir = projectSkillDir(workspace, name);
+  if (!validSkillName(name) || !fs.existsSync(dir)) return false;
+  fs.rmSync(dir, { recursive: true, force: true });
+  return true;
+}

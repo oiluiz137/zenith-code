@@ -29,6 +29,12 @@ const DELEGATE_TOOL: ToolSpec = {
   parameters: { type: "object", properties: { task: { type: "string", description: "Complete, self-contained instructions for the subagent." } }, required: ["task"] },
 };
 
+const REMEMBER_TOOL: ToolSpec = {
+  name: "remember",
+  description: "Save one short, durable fact or preference about the user or project to persistent memory (shown in every future conversation). Use only when the user asks you to remember something or states a lasting preference. Never save secrets.",
+  parameters: { type: "object", properties: { fact: { type: "string", description: "One short sentence." } }, required: ["fact"] },
+};
+
 /** Ferramentas que o subagente pode usar: só leitura e web. */
 const SUBAGENT_TOOLS = new Set(["list_dir", "read_file", "search_text", "web_search", "web_fetch"]);
 const SUBAGENT_STEPS = 8;
@@ -134,7 +140,7 @@ export async function runTurn(p: TurnParams): Promise<void> {
     if (skillContext) messages.push({ role: "system", content: `Skill acionada pelo usuário:\n${skillContext}` });
     await ensureServers(settings.workspace);
     const flags = { ...ALL_FLAGS, ...(p.toolFlags ?? {}) };
-    const tools: ToolSpec[] = [...TOOLS.map(({ risk: _r, ...spec }) => spec), LOAD_SKILL_TOOL, ...mcpTools(), DELEGATE_TOOL]
+    const tools: ToolSpec[] = [...TOOLS.map(({ risk: _r, ...spec }) => spec), LOAD_SKILL_TOOL, ...mcpTools(), DELEGATE_TOOL, REMEMBER_TOOL]
       .filter((t) => {
         const f = flagFor(t.name);
         return !f || flags[f];
@@ -256,6 +262,18 @@ async function handleToolCall(
   skills: Skill[],
   p: TurnParams,
 ): Promise<{ ok: boolean; output: string }> {
+  if (name === "remember") {
+    const fact = String(args.fact ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+    if (!fact) return { ok: false, output: "Informe o que lembrar." };
+    if (mode === "plan") return { ok: false, output: "Modo plano: a memória não é alterada." };
+    const file = memoryPath(settings.workspace);
+    const current = memoryText(settings.workspace);
+    if (current.split("\n").some((l) => l.replace(/^[-*]\s*/, "").trim().toLowerCase() === fact.toLowerCase())) return { ok: true, output: "Já estava na memória." };
+    if (current.length + fact.length > 3800) return { ok: false, output: "A memória está cheia. Peça ao usuário para limpar em Configurações > Memória." };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${current ? current + "\n" : ""}- ${fact}\n`, "utf8");
+    return { ok: true, output: `Guardado na memória: ${fact}` };
+  }
   if (name === "delegate_task") {
     const task = String(args.task ?? "").trim();
     if (!task) return { ok: false, output: "Informe a tarefa do subagente." };

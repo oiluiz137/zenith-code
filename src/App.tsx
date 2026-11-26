@@ -657,6 +657,7 @@ export default function App() {
               theme={theme}
               onTheme={setTheme}
               initialTab={settingsTab}
+              onSkillsChanged={() => api.bootstrap().then(setBoot).catch(() => undefined)}
               onSaved={(s) => { setSettings(s); setPermMode(s.mode); setToast("Configurações salvas."); }}
               onClose={() => setView(prevView)}
             />

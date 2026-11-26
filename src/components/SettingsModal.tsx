@@ -32,6 +32,7 @@ interface Props {
   onSaved: (s: Settings) => void;
   onClose: () => void;
   initialTab?: Tab;
+  onSkillsChanged?: () => void;
   page?: boolean;
 }
 
@@ -47,7 +48,7 @@ export const SHORTCUTS: [string, string][] = [
   ["Skills e comandos", "/ no início da mensagem"],
 ];
 
-export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved, onClose, initialTab }: Props) {
+export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved, onClose, initialTab, onSkillsChanged }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "geral");
   const [draft, setDraft] = useState<Settings>(settings);
   const [memory, setMemory] = useState("");
@@ -65,6 +66,32 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
 
   const [modelsDir, setModelsDir] = useState("");
   const [jbText, setJbText] = useState("");
+  const [editing, setEditing] = useState<{ name: string; content: string; origin: "projeto" | "app" | "nova"; error: string } | null>(null);
+  const SKILL_TEMPLATE = (name: string) => `---\nname: ${name}\ndescription: Uma linha dizendo quando usar esta skill.\n---\n\nInstruções para o modelo, em passos curtos.\n`;
+  async function openSkill(name: string) {
+    try {
+      const f = await api.skillFile(name);
+      setEditing({ name, content: f.content, origin: f.origin, error: "" });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function saveSkill() {
+    if (!editing) return;
+    try {
+      await api.saveSkill(editing.name, editing.content);
+      setEditing(null);
+      onSkillsChanged?.();
+    } catch (e) {
+      setEditing({ ...editing, error: (e as Error).message });
+    }
+  }
+  async function removeSkill() {
+    if (!editing) return;
+    await api.deleteSkill(editing.name).catch(() => undefined);
+    setEditing(null);
+    onSkillsChanged?.();
+  }
   useEffect(() => {
     api.modelsDir().then((r) => setModelsDir(r.path)).catch(() => undefined);
     api.memory().then((r) => { setMemory(r.content); setMemoryLoaded(r.content); }).catch(() => undefined);
@@ -272,6 +299,26 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
           {tab === "skills" && (
             <>
               <p className="lead">Skills são instruções em SKILL.md que o agente carrega quando a tarefa pede. Desligue as que não quer que o modelo veja. Use digitando / no compositor.</p>
+              {editing ? (
+                <div className="card form-card">
+                  <label className="field"><span>Nome</span>
+                    <input value={editing.name} readOnly={editing.origin !== "nova"} onChange={(e) => setEditing({ ...editing, name: e.target.value.toLowerCase(), content: editing.content.replace(/^(---\r?\nname:).*/, `$1 ${e.target.value.toLowerCase()}`) })} placeholder="ex.: revisar-codigo" />
+                    {editing.origin === "app" && <small>Esta skill vem com o Zenith. Salvar cria uma cópia no projeto que passa a valer no lugar dela.</small>}
+                  </label>
+                  <label className="field"><span>SKILL.md</span>
+                    <textarea className="full" rows={14} value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value, error: "" })} spellCheck={false} />
+                  </label>
+                  {editing.error && <div className="error">{editing.error}</div>}
+                  <div className="actions">
+                    <button className="btn primary" onClick={saveSkill} disabled={!editing.name.trim()}>Salvar skill</button>
+                    <button className="btn ghost" onClick={() => setEditing(null)}>Cancelar</button>
+                    <span className="spacer" />
+                    {editing.origin === "projeto" && <button className="btn danger" onClick={removeSkill}>{skills.length ? "Excluir do projeto" : "Excluir"}</button>}
+                  </div>
+                </div>
+              ) : (
+                <div className="toolbar"><button className="btn sm" onClick={() => setEditing({ name: "minha-skill", content: SKILL_TEMPLATE("minha-skill"), origin: "nova", error: "" })}><Icon name="plus" size={14} /> Nova skill</button></div>
+              )}
               <div className="search-field"><Icon name="search" size={16} /><input value={skillQuery} onChange={(e) => setSkillQuery(e.target.value)} placeholder={`Procurar entre ${skills.length} skills`} aria-label="Procurar skills" /></div>
               <div className="row-list">
                 {filteredSkills.length === 0 && <div><span className="hint">Nenhuma skill encontrada.</span></div>}
@@ -280,6 +327,7 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
                   return (
                     <div key={s.name}>
                       <div className="grow"><div className="row-title">/{s.name}</div><small className="clamp2">{s.description}</small></div>
+                      <button className="btn sm ghost" onClick={() => openSkill(s.name)}>Editar</button>
                       <button className={`switch ${on ? "on" : ""}`} onClick={() => setDisabled(on ? [...disabled, s.name] : disabled.filter((x) => x !== s.name))} role="switch" aria-checked={on} aria-label={`${on ? "Desligar" : "Ligar"} ${s.name}`} />
                     </div>
                   );

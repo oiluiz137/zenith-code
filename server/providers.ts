@@ -73,7 +73,30 @@ function authHeaders(p: ProviderConfig): Record<string, string> {
 async function assertOk(res: Response, label: string): Promise<void> {
   if (res.ok) return;
   const text = await res.text().catch(() => "");
-  throw new Error(`${label} erro ${res.status}: ${text.slice(0, 500)}`);
+  const hint: Record<number, string> = {
+    401: "Chave de API inválida ou expirada. Confira em Configurações > Modelos e provedores.",
+    402: "Sem saldo na conta do provedor. Use um modelo gratuito ou adicione créditos.",
+    403: "Acesso negado pelo provedor (chave sem permissão para este modelo).",
+    404: "Modelo não encontrado neste provedor. Escolha outro no seletor de modelo.",
+    429: "Limite de uso atingido (modelos gratuitos têm limites). Tente de novo em instantes ou escolha outro modelo.",
+    503: "O modelo está indisponível no momento. Tente de novo ou escolha outro.",
+  };
+  throw new Error(`${label} erro ${res.status}: ${hint[res.status] ?? ""}\n${text.slice(0, 400)}`.trim());
+}
+
+/** fetch com novas tentativas para limite de uso (429) e indisponibilidade momentânea (502/503). */
+async function fetchRetry(url: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
+  const waits = [3000, 8000, 15000];
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, init);
+    if (![429, 502, 503].includes(res.status) || attempt >= waits.length) return res;
+    await res.text().catch(() => "");
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, waits[attempt]);
+      signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+    if (signal.aborted) return res;
+  }
 }
 
 /** Lê o corpo da resposta linha a linha. */
@@ -118,12 +141,12 @@ async function streamOpenAI(o: StreamOptions): Promise<StreamResult> {
   if (o.tools.length) {
     body.tools = o.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
   }
-  const res = await fetch(`${base}/chat/completions`, {
+  const res = await fetchRetry(`${base}/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json", ...authHeaders(o.provider) },
     body: JSON.stringify(body),
     signal: o.signal,
-  });
+  }, o.signal);
   await assertOk(res, o.provider.name);
   let content = "";
   const pending = new Map<number, { id: string; name: string; args: string }>();

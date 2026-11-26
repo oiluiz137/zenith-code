@@ -25,7 +25,7 @@ import { ensureServers, mcpStatus } from "./mcp.ts";
 import { pickFolder, gitStatus, gitDiff, startJob, listJobs, stopJob, contextCategories } from "./workspace.ts";
 import { protectSecret, revealSecret, SECRETS_SUPPORTED } from "./secrets.ts";
 import { startBatch, getBatch, listBatches } from "./batch.ts";
-import { loadSkills } from "./skills.ts";
+import { loadSkills, readSkillFile, writeProjectSkill, deleteProjectSkill } from "./skills.ts";
 import { listTasks, createTask, updateTask, deleteTask, runTask, startScheduler } from "./schedule.ts";
 import type { Mode, ProviderConfig, Settings } from "./types.ts";
 
@@ -128,6 +128,21 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     return branch ? send(res, 201, branch) : send(res, 404, { error: "Mensagem não encontrada." });
   }
 
+  const skillMatch = /^\/api\/skills\/([^/]+)$/.exec(p);
+  if (skillMatch) {
+    const name = decodeURIComponent(skillMatch[1]);
+    const ws = getSettings().workspace;
+    if (method === "GET") {
+      const s = readSkillFile(ws, name);
+      return s ? send(res, 200, s) : send(res, 404, { error: "Skill não encontrada." });
+    }
+    if (method === "PUT") {
+      const body = await readBody(req);
+      const err = writeProjectSkill(ws, name, String(body.content ?? ""));
+      return err ? send(res, 400, { error: err }) : send(res, 200, { ok: true });
+    }
+    if (method === "DELETE") return send(res, deleteProjectSkill(ws, name) ? 200 : 404, { ok: true });
+  }
   if (method === "GET" && p === "/api/artifacts") return send(res, 200, listArtifactMessages());
 
   if (method === "GET" && p === "/api/jailbreak") return send(res, 200, { text: jailbreakText() });

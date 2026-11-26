@@ -33,6 +33,7 @@ const VERBS: Record<string, [string, string, string]> = {
   list_dir: ["listou", "pasta", "pastas"],
   search_text: ["pesquisou código", "", ""],
   load_skill: ["carregou", "skill", "skills"],
+  remember: ["guardou", "fato na memória", "fatos na memória"],
   delegate_task: ["delegou", "tarefa a um subagente", "tarefas a subagentes"],
 };
 
