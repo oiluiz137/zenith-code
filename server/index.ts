@@ -15,7 +15,7 @@ import {
 import { lineDiff, toHunks, revertHunks } from "./diff.ts";
 import { runTurn, memoryPath, memoryText, systemPrompt, jailbreakText } from "./agent.ts";
 import { conversationFolder } from "./store.ts";
-import { listModels } from "./providers.ts";
+import { listModels, getModelTiers } from "./providers.ts";
 import { resolvePermission, type Decision } from "./permissions.ts";
 import { resolveInside, runCommand } from "./tools.ts";
 import fsSync from "node:fs";
@@ -225,7 +225,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     const provider = settings.providers.find((x) => x.id === url.searchParams.get("provider"));
     if (!provider) return send(res, 404, { error: "Provedor não encontrado" });
     try {
-      return send(res, 200, { models: await listModels({ ...provider, apiKey: revealSecret(provider.apiKey ?? "") }) });
+      const models = await listModels({ ...provider, apiKey: revealSecret(provider.apiKey ?? "") });
+      return send(res, 200, { models, tiers: getModelTiers(provider.id) });
     } catch (err) {
       return send(res, 502, { error: (err as Error).message, models: [] });
     }

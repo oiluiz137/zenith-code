@@ -50,12 +50,34 @@ export async function listModels(provider: ProviderConfig): Promise<string[]> {
   }
 }
 
+export type ModelTier = "gratuito" | "limitado" | "pago";
+const tiers = new Map<string, Record<string, ModelTier>>();
+
+/**
+ * Classifica modelos pelo preço informado pelo provedor (OpenRouter):
+ * "limitado" = variante :free (sem custo, com limite de pedidos); "gratuito" = preço zero sem a variante :free; "pago" = o resto.
+ */
+export function tiersOf(data: { id: string; pricing?: { prompt?: string | number; completion?: string | number } }[]): Record<string, ModelTier> {
+  const out: Record<string, ModelTier> = {};
+  for (const m of data) {
+    if (!m.pricing) continue;
+    const zero = Number(m.pricing.prompt ?? 1) === 0 && Number(m.pricing.completion ?? 1) === 0;
+    out[m.id] = zero ? (m.id.endsWith(":free") ? "limitado" : "gratuito") : "pago";
+  }
+  return out;
+}
+
+export function getModelTiers(providerId: string): Record<string, ModelTier> {
+  return tiers.get(providerId) ?? {};
+}
+
 async function fetchModels(provider: ProviderConfig): Promise<string[]> {
   const base = provider.baseUrl.replace(/\/+$/, "");
   if (provider.kind === "openai") {
     const res = await fetch(`${base}/models`, { headers: authHeaders(provider) });
     if (!res.ok) throw new Error(`${provider.name} respondeu ${res.status}`);
     const json: any = await res.json();
+    tiers.set(provider.id, tiersOf(json.data ?? []));
     return (json.data ?? []).map((m: any) => m.id as string);
   }
   const res = await fetch(`${base}/v1/models`, {

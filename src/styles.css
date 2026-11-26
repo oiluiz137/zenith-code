@@ -546,3 +546,9 @@ html.desktop .settings-main { position: relative; }
 .thinking-text { white-space: pre-wrap; color: var(--muted); font-size: 14px; line-height: 1.6; border-left: 2px solid var(--line); padding: 2px 0 2px 12px; max-height: 360px; overflow: auto; }
 .jb-preview summary { cursor: pointer; color: var(--muted); font-size: 13px; margin: 6px 0; }
 .jb-preview pre { max-height: 300px; overflow: auto; }
+
+/* Lista de modelos por categoria */
+.model-search { margin: 4px 6px 6px; padding: 6px 9px; font-size: 13px; }
+.tier-group { display: flex; flex-direction: column; }
+.tier-head { display: flex !important; align-items: center; gap: 8px; padding: 6px 10px !important; font-size: 12px !important; font-weight: 600; color: var(--muted) !important; }
+.tier-head:hover { color: var(--ink) !important; }

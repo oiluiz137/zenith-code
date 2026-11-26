@@ -104,7 +104,7 @@ export const api = {
   artifacts: () => call<{ conversationId: string; title: string; messageId: string; content: string; createdAt: number }[]>("GET", "/api/artifacts"),
   search: (q: string) => call<{ conversationId: string; title: string; snippet: string }[]>("GET", `/api/search?q=${encodeURIComponent(q)}`),
   saveSettings: (s: Partial<Settings> & { providers?: ProviderConfig[] }) => call<Settings>("PUT", "/api/settings", s),
-  models: (provider: string) => call<{ models: string[]; error?: string }>("GET", `/api/models?provider=${encodeURIComponent(provider)}`),
+  models: (provider: string) => call<{ models: string[]; tiers?: Record<string, "gratuito" | "limitado" | "pago">; error?: string }>("GET", `/api/models?provider=${encodeURIComponent(provider)}`),
   permission: (id: string, decision: "once" | "always" | "deny") => call<{ ok: boolean }>("POST", `/api/permissions/${id}`, { decision }),
   undo: () => call<{ ok: boolean; message: string }>("POST", "/api/checkpoints/undo"),
   feedback: () => call<Record<string, string>>("GET", "/api/feedback"),

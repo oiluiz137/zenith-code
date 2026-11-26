@@ -75,6 +75,7 @@ export default function App() {
   const [providerId, setProviderId] = useState("");
   const [model, setModel] = useState("");
   const [models, setModels] = useState<string[]>([]);
+  const [modelTiers, setModelTiers] = useState<Record<string, "gratuito" | "limitado" | "pago">>({});
   const [modelError, setModelError] = useState("");
   const [runtime, setRuntime] = useState<{ gpu: string | false; loaded: boolean } | null>(null);
   const [permMode, setPermMode] = useState<PermMode>("ask");
@@ -121,6 +122,7 @@ export default function App() {
     setModelError("");
     api.models(providerId).then((r) => {
       setModels(r.models);
+      setModelTiers(r.tiers ?? {});
       if (r.error) setModelError(r.error);
       setModel((current) => (current && r.models.includes(current) ? current : r.models[0] ?? current));
     }).catch((e) => setModelError((e as Error).message));
@@ -493,6 +495,7 @@ export default function App() {
     providerId,
     onProvider: setProviderId,
     models,
+    modelTiers,
     model,
     onModel: setModel,
     mode: permMode,

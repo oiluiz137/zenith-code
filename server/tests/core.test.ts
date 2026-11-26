@@ -7,6 +7,7 @@ import { parseSkill } from "../skills.ts";
 import { contextCategories } from "../workspace.ts";
 import { lineDiff, toHunks, revertHunks } from "../diff.ts";
 import { systemPrompt } from "../agent.ts";
+import { tiersOf } from "../providers.ts";
 import { parseSearchOutput, parseQueries, dropUnknownCitations, sourcesMarkdown, keywords, relevance } from "../research.ts";
 import { resolveInside, permissionKey, describeAction, parseDuckHtml, parseDuckLite, parseBing, parseWikipedia } from "../tools.ts";
 
@@ -153,4 +154,13 @@ test("pesquisa: descarta resultados que não falam do tema", () => {
   assert.ok(relevance(words, "What is the Model Context Protocol?", "") >= 3);
   assert.equal(relevance(words, "Popular 3D models - Sketchfab", "Download free 3D assets"), 1);
   assert.equal(relevance(words, "Receita de bolo", "farinha e ovos"), 0);
+});
+test("modelos: separa pagos, gratuitos e gratuitos com limites", () => {
+  const t = tiersOf([
+    { id: "a/pago", pricing: { prompt: "0.000003", completion: "0.000015" } },
+    { id: "b/modelo:free", pricing: { prompt: "0", completion: "0" } },
+    { id: "openrouter/auto-gratis", pricing: { prompt: 0, completion: 0 } },
+    { id: "c/sem-preco" },
+  ]);
+  assert.deepEqual(t, { "a/pago": "pago", "b/modelo:free": "limitado", "openrouter/auto-gratis": "gratuito" });
 });

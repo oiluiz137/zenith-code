@@ -34,6 +34,8 @@ interface Props {
   providerId: string;
   onProvider: (id: string) => void;
   models: string[];
+  /** Categoria de preço de cada modelo (OpenRouter); vazio nos demais provedores. */
+  modelTiers?: Record<string, "gratuito" | "limitado" | "pago">;
   model: string;
   onModel: (m: string) => void;
   mode: Mode;
@@ -63,6 +65,8 @@ function shortModel(m: string): string {
 
 export function Composer(p: Props) {
   const [pop, setPop] = useState<Pop>(null);
+  const [modelQuery, setModelQuery] = useState("");
+  const [openTiers, setOpenTiers] = useState<Record<string, boolean>>({ limitado: true, gratuito: true, pago: false });
   const tools = p.toolFlags;
   const fileRef = useRef<HTMLInputElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -217,12 +221,41 @@ export function Composer(p: Props) {
               ))}
               <div className="menu-label">Modelo</div>
               {p.models.length === 0 && <div className="menu-label">Nenhum modelo encontrado em {providerName}.</div>}
-              {p.models.map((m) => (
-                <button key={m} onClick={() => { p.onModel(m); setPop(null); }}>
-                  <span className="grow ellipsis">{m}</span>
-                  {p.model === m ? <span className="check"><Icon name="check" size={14} /></span> : null}
-                </button>
-              ))}
+              {p.models.length > 12 && (
+                <input className="model-search" value={modelQuery} onChange={(e) => setModelQuery(e.target.value)} placeholder={`Filtrar ${p.models.length} modelos`} aria-label="Filtrar modelos" autoFocus />
+              )}
+              {(() => {
+                const q = modelQuery.trim().toLowerCase();
+                const shown = p.models.filter((m) => !q || m.toLowerCase().includes(q));
+                const hasTiers = !!p.modelTiers && Object.keys(p.modelTiers).length > 0;
+                const row = (m: string) => (
+                  <button key={m} onClick={() => { p.onModel(m); setPop(null); }}>
+                    <span className="grow ellipsis">{m}</span>
+                    {p.model === m ? <span className="check"><Icon name="check" size={14} /></span> : null}
+                  </button>
+                );
+                if (!hasTiers) return shown.map(row);
+                const groups: { id: "limitado" | "gratuito" | "pago"; label: string; hint: string }[] = [
+                  { id: "limitado", label: "Gratuitos com limites", hint: "Sem custo, mas com limite de pedidos por minuto e por dia" },
+                  { id: "gratuito", label: "Gratuitos", hint: "Preço zero informado pelo provedor" },
+                  { id: "pago", label: "Pagos", hint: "Cobram por uso e precisam de saldo" },
+                ];
+                return groups.map((g) => {
+                  const list = shown.filter((m) => (p.modelTiers![m] ?? "pago") === g.id);
+                  if (list.length === 0) return null;
+                  const open = q ? true : openTiers[g.id];
+                  return (
+                    <div key={g.id} className="tier-group">
+                      <button className="tier-head" title={g.hint} onClick={() => setOpenTiers({ ...openTiers, [g.id]: !openTiers[g.id] })} aria-expanded={open}>
+                        <Icon name={open ? "chevron" : "right"} size={12} />
+                        <span className="grow">{g.label}</span>
+                        <span className="muted small">{list.length}</span>
+                      </button>
+                      {open && list.map(row)}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           )}
         </div>
