@@ -23,7 +23,18 @@ const LOAD_SKILL_TOOL: ToolSpec = {
   parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
 };
 
+const DELEGATE_TOOL: ToolSpec = {
+  name: "delegate_task",
+  description: "Delegate a read-only investigation to a subagent with its own fresh context (it can list/read files, search text and use the web, but cannot change anything). Use it to explore large parts of a project without filling your own context. Returns the subagent's summary.",
+  parameters: { type: "object", properties: { task: { type: "string", description: "Complete, self-contained instructions for the subagent." } }, required: ["task"] },
+};
+
+/** Ferramentas que o subagente pode usar: só leitura e web. */
+const SUBAGENT_TOOLS = new Set(["list_dir", "read_file", "search_text", "web_search", "web_fetch"]);
+const SUBAGENT_STEPS = 8;
+
 export interface ToolFlags {
+
   web: boolean;
   mcp: boolean;
   skills: boolean;
@@ -39,6 +50,8 @@ export interface TurnParams {
   toolFlags?: ToolFlags;
   signal: AbortSignal;
   emit: (event: StreamEvent) => void;
+  /** Preenchido durante o turno: roda um subagente de leitura e devolve o resumo. */
+  delegate?: (task: string) => Promise<string>;
 }
 
 const ALL_FLAGS: ToolFlags = { web: true, mcp: true, skills: true, exec: true };
@@ -121,13 +134,14 @@ export async function runTurn(p: TurnParams): Promise<void> {
     if (skillContext) messages.push({ role: "system", content: `Skill acionada pelo usuário:\n${skillContext}` });
     await ensureServers(settings.workspace);
     const flags = { ...ALL_FLAGS, ...(p.toolFlags ?? {}) };
-    const tools: ToolSpec[] = [...TOOLS.map(({ risk: _r, ...spec }) => spec), LOAD_SKILL_TOOL, ...mcpTools()]
+    const tools: ToolSpec[] = [...TOOLS.map(({ risk: _r, ...spec }) => spec), LOAD_SKILL_TOOL, ...mcpTools(), DELEGATE_TOOL]
       .filter((t) => {
         const f = flagFor(t.name);
         return !f || flags[f];
       });
 
     const useThinking = !!settings.reasoning && provider?.kind === "native";
+    p.delegate = (task) => runSubagent(task, provider, model, settings, skills, flags, p);
     for (let step = 0; step < MAX_STEPS; step++) {
       if (p.signal.aborted) break;
       const result = await streamChat({
@@ -205,6 +219,34 @@ async function compactConversation(
   return `Contexto compactado: ${old.length} mensagens resumidas. As 4 últimas foram mantidas.`;
 }
 
+/** Subagente: contexto novo, só leitura, até 8 passos. Devolve o resumo final ao agente principal. */
+async function runSubagent(task: string, provider: ProviderConfig | undefined, model: string, settings: Settings, skills: Skill[], flags: ToolFlags, p: TurnParams): Promise<string> {
+  if (!provider) return "Não há provedor ativo para o subagente.";
+  const tools: ToolSpec[] = TOOLS.filter((t) => SUBAGENT_TOOLS.has(t.name))
+    .map(({ risk: _r, ...spec }) => spec)
+    .filter((t) => { const f = flagFor(t.name); return !f || flags[f]; });
+  const messages: ChatMessage[] = [
+    { role: "system", content: `Você é um subagente de pesquisa do Zenith Code. Cumpra a tarefa usando só as ferramentas de leitura e responda no fim com um resumo curto e objetivo do que encontrou (caminhos de arquivo, fatos, conclusões). Você não pode alterar nada.\nPasta de trabalho: ${settings.workspace}` },
+    { role: "user", content: task },
+  ];
+  p.emit({ type: "status", text: "Subagente iniciado" });
+  let last = "";
+  for (let step = 0; step < SUBAGENT_STEPS; step++) {
+    if (p.signal.aborted) break;
+    const result = await streamChat({ provider, model, messages, tools, signal: p.signal, onDelta: () => undefined, temperature: settings.temperature, topP: settings.topP, maxTokens: settings.maxTokens });
+    last = result.content || last;
+    messages.push({ role: "assistant", content: result.content, toolCalls: result.toolCalls.length ? result.toolCalls : undefined });
+    if (result.toolCalls.length === 0) break;
+    for (const call of result.toolCalls) {
+      const allowed = SUBAGENT_TOOLS.has(call.name);
+      const out = allowed ? await handleToolCall(call.name, call.args, call.id, "plan", settings, skills, { ...p, toolFlags: flags }) : { ok: false, output: "Ferramenta não permitida para subagentes." };
+      messages.push({ role: "tool", content: out.output.slice(0, 6000), toolCallId: call.id, toolName: call.name });
+    }
+  }
+  p.emit({ type: "status", text: "Subagente concluído" });
+  return last.trim() || "O subagente terminou sem resposta.";
+}
+
 async function handleToolCall(
   name: string,
   args: Record<string, unknown>,
@@ -214,6 +256,12 @@ async function handleToolCall(
   skills: Skill[],
   p: TurnParams,
 ): Promise<{ ok: boolean; output: string }> {
+  if (name === "delegate_task") {
+    const task = String(args.task ?? "").trim();
+    if (!task) return { ok: false, output: "Informe a tarefa do subagente." };
+    if (!p.delegate) return { ok: false, output: "Subagentes não estão disponíveis aqui." };
+    return { ok: true, output: await p.delegate(task) };
+  }
   if (name === "load_skill") {
     const skill = skills.find((s) => s.name === String(args.name ?? ""));
     return skill ? { ok: true, output: skill.body } : { ok: false, output: "Skill não encontrada." };
