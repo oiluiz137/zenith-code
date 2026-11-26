@@ -5,6 +5,8 @@ import path from "node:path";
 import type { ChatMessage, Mode, ProviderConfig, Settings, StreamEvent, ToolSpec } from "./types.ts";
 import { addCheckpoint, appendMessage, conversationFolder, conversationProjectId, getKv, getProject, getSettings, listMessages, listProjectFiles, saveSettings, setKv } from "./store.ts";
 import { streamChat } from "./providers.ts";
+import { APP_ROOT } from "./paths.ts";
+import { stripThinking } from "./native.ts";
 import { TOOLS, executeTool, describeAction, permissionKey, resolveInside, type Risk } from "./tools.ts";
 import { requestPermission, type Decision } from "./permissions.ts";
 import { loadSkills, skillsIndex, type Skill } from "./skills.ts";
@@ -125,6 +127,7 @@ export async function runTurn(p: TurnParams): Promise<void> {
         return !f || flags[f];
       });
 
+    const useThinking = !!settings.reasoning && provider?.kind === "native";
     for (let step = 0; step < MAX_STEPS; step++) {
       if (p.signal.aborted) break;
       const result = await streamChat({
@@ -134,14 +137,18 @@ export async function runTurn(p: TurnParams): Promise<void> {
         tools,
         signal: p.signal,
         onDelta: (text) => p.emit({ type: "delta", text }),
+        onThinking: (text) => p.emit({ type: "thinking", text }),
+        thinking: useThinking,
         temperature: settings.temperature,
         topP: settings.topP,
-        maxTokens: settings.maxTokens,
+        // O raciocínio gasta tokens antes da resposta: dá mais espaço quando está ligado.
+        maxTokens: useThinking ? Math.max(settings.maxTokens, 4096) : settings.maxTokens,
       });
 
       const stored = appendMessage(p.conversationId, {
         role: "assistant",
-        content: result.content,
+        // O raciocínio fica guardado na frente da resposta, entre <think> e </think>.
+        content: result.thinking ? `<think>${result.thinking}</think>\n\n${result.content}` : result.content,
         toolCalls: result.toolCalls.length ? result.toolCalls : undefined,
       });
       messages.push({ role: "assistant", content: result.content, toolCalls: result.toolCalls.length ? result.toolCalls : undefined });
@@ -341,11 +348,20 @@ function applySkillCommand(text: string, skills: Skill[]): { text: string; skill
 function toChat(rows: ReturnType<typeof listMessages>): ChatMessage[] {
   return rows.map((r) => ({
     role: r.role,
-    content: r.content,
+    content: r.role === "assistant" ? stripThinking(r.content) : r.content,
     toolCalls: r.toolCalls,
     toolCallId: r.toolCallId,
     toolName: r.toolName,
   }));
+}
+
+/** Texto do prompt "jailbreak" (prompts/jailbreak.md, na pasta do programa). */
+export function jailbreakText(): string {
+  try {
+    return fs.readFileSync(path.join(APP_ROOT, "prompts", "jailbreak.md"), "utf8").trim();
+  } catch {
+    return "";
+  }
 }
 
 export function systemPrompt(settings: Settings, mode: Mode, skills: Skill[]): string {
@@ -365,6 +381,7 @@ export function systemPrompt(settings: Settings, mode: Mode, skills: Skill[]): s
       didatico: "Estilo: didático. Use exemplos simples e defina termos técnicos.",
     } as Record<string, string>)[settings.responseStyle] ?? "Estilo: equilibrado.",
     ...(settings.customPrompt?.trim() ? [`Instruções do usuário (Configurações):\n${settings.customPrompt.trim()}`] : []),
+    ...(settings.jailbreak && jailbreakText() ? [jailbreakText()] : []),
     "Use as ferramentas para ler antes de alterar arquivos. Ao editar, prefira edit_file a reescrever o arquivo inteiro.",
     "Os caminhos de arquivo são relativos à pasta de trabalho. Nunca tente sair dela.",
     `Pasta de trabalho: ${settings.workspace}`,

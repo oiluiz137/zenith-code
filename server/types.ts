@@ -49,6 +49,10 @@ export interface Settings {
   responseStyle: "normal" | "conciso" | "detalhado" | "didatico";
   maxTokens: number;
   customPrompt: string;
+  /** Liga o prompt "jailbreak" (prompts/jailbreak.md), lido pelo modelo no prompt de sistema. */
+  jailbreak: boolean;
+  /** Deixa o modelo local (Qwen3) pensar antes de responder; o raciocínio aparece recolhido. */
+  reasoning: boolean;
 }
 
 export interface Conversation {
@@ -76,6 +80,7 @@ export interface StoredMessage {
 /** Eventos enviados ao navegador por SSE durante um turno do agente. */
 export type StreamEvent =
   | { type: "delta"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "tool_start"; id: string; name: string; args: Record<string, unknown> }
   | { type: "tool_result"; id: string; name: string; ok: boolean; output: string }
   | { type: "permission"; id: string; name: string; risk: "read" | "write" | "exec" | "network"; summary: string; args: Record<string, unknown> }

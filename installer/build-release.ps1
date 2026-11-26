@@ -37,7 +37,7 @@ Get-ChildItem "$stage\locales" -Filter *.pak | Where-Object { $_.Name -notin @("
 
 Write-Output "3/7 Copiando o Zenith"
 New-Item -ItemType Directory -Force $appDir | Out-Null
-Copy-Item electron, dist, dist-server, skills -Destination $appDir -Recurse
+Copy-Item electron, dist, dist-server, skills, prompts -Destination $appDir -Recurse
 Copy-Item LICENSE, README.md -Destination $stage
 @{ name = "zenith-code"; productName = "Zenith Code"; version = $Version; private = $true; type = "module"; main = "electron/main.mjs";
    dependencies = @{ "node-llama-cpp" = $pkg.dependencies.'node-llama-cpp' } } | ConvertTo-Json | Set-Content "$appDir\package.json" -Encoding ascii

@@ -10,10 +10,10 @@ import {
   listMessages, listCheckpoints, popCheckpoint, saveSettings, searchConversations, updateConversation,
   listProjects, createProject, getProject, updateProject, deleteProject, listProjectFiles, addProjectFile,
   deleteProjectFile, setConversationProject, truncateMessages, messageSeq, listArtifactMessages,
-  listConversationCheckpoints, getCheckpoint, setCheckpointStatus,
+  listConversationCheckpoints, getCheckpoint, setCheckpointStatus, branchConversation,
 } from "./store.ts";
 import { lineDiff, toHunks, revertHunks } from "./diff.ts";
-import { runTurn, memoryPath, memoryText, systemPrompt } from "./agent.ts";
+import { runTurn, memoryPath, memoryText, systemPrompt, jailbreakText } from "./agent.ts";
 import { conversationFolder } from "./store.ts";
 import { listModels } from "./providers.ts";
 import { resolvePermission, type Decision } from "./permissions.ts";
@@ -121,7 +121,16 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
   }
 
+  const branchMatch = /^\/api\/conversations\/([^/]+)\/branch$/.exec(p);
+  if (branchMatch && method === "POST") {
+    const body = await readBody(req);
+    const branch = branchConversation(branchMatch[1], String(body.messageId ?? ""));
+    return branch ? send(res, 201, branch) : send(res, 404, { error: "Mensagem não encontrada." });
+  }
+
   if (method === "GET" && p === "/api/artifacts") return send(res, 200, listArtifactMessages());
+
+  if (method === "GET" && p === "/api/jailbreak") return send(res, 200, { text: jailbreakText() });
 
   // Pasta onde ficam os modelos .gguf (abre no Explorer quando pedido).
   if (p === "/api/models-dir") {

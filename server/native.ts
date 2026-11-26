@@ -74,7 +74,7 @@ async function ensureLoaded(modelFile: string): Promise<Loaded> {
 }
 
 /** Monta o prompt no formato de chat do Qwen (ChatML) com definições de ferramenta. */
-export function buildPrompt(messages: ChatMessage[], tools: ToolSpec[]): string {
+export function buildPrompt(messages: ChatMessage[], tools: ToolSpec[], thinking = false): string {
   const toolLines = tools.map((t) => JSON.stringify({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
   const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
   let out = "";
@@ -87,13 +87,26 @@ export function buildPrompt(messages: ChatMessage[], tools: ToolSpec[]): string 
     if (m.role === "user") out += `<|im_start|>user\n${m.content}<|im_end|>\n`;
     else if (m.role === "tool") out += `<|im_start|>user\n<tool_response>\n${m.content}\n</tool_response><|im_end|>\n`;
     else {
-      let body = m.content ?? "";
+      // O raciocínio guardado numa resposta anterior não volta ao modelo.
+      let body = stripThinking(m.content ?? "");
       for (const tc of m.toolCalls ?? []) body += `\n<tool_call>\n${JSON.stringify({ name: tc.name, arguments: tc.args })}\n</tool_call>`;
       out += `<|im_start|>assistant\n${body.trim()}<|im_end|>\n`;
     }
   }
-  out += "<|im_start|>assistant\n<think>\n\n</think>\n\n";
+  // Sem raciocínio: bloco <think> vazio (o Qwen3 responde direto). Com raciocínio: deixa o bloco aberto.
+  out += thinking ? "<|im_start|>assistant\n<think>\n" : "<|im_start|>assistant\n<think>\n\n</think>\n\n";
   return out;
+}
+
+/** Remove blocos <think>...</think> (e um bloco aberto no fim) de um texto. */
+export function stripThinking(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>\s*/g, "").replace(/<think>[\s\S]*$/, "").trim();
+}
+
+/** Extrai o texto do primeiro bloco <think> (fechado ou ainda aberto). */
+export function extractThinking(text: string): string {
+  const m = /<think>([\s\S]*?)(<\/think>|$)/.exec(text);
+  return m ? m[1].trim() : "";
 }
 
 /** Extrai objetos JSON equilibrados de um texto (respeitando strings). */
@@ -129,7 +142,7 @@ function extractJsonObjects(text: string): { json: string; start: number; end: n
  * Aceita <tool_call>{...}</tool_call> e, como reserva, objetos {"name", "arguments"} soltos ou em blocos de código. */
 export function parseOutput(raw: string): { content: string; toolCalls: ToolCall[] } {
   const toolCalls: ToolCall[] = [];
-  const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<\|im_end\|>|<\|endoftext\|>/g, "");
+  const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<think>[\s\S]*$/, "").replace(/<\|im_end\|>|<\|endoftext\|>/g, "");
   const spans: { start: number; end: number }[] = [];
   const re = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
   let m: RegExpExecArray | null;
@@ -170,25 +183,32 @@ export interface GenerateOptions {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  thinking?: boolean;
+  onThinking?: (text: string) => void;
 }
 
 /** Gera uma resposta. Uma geração por vez (fila), pois o contexto é único. */
-export function generate(opts: GenerateOptions): Promise<{ content: string; toolCalls: ToolCall[] }> {
+export function generate(opts: GenerateOptions): Promise<{ content: string; toolCalls: ToolCall[]; thinking?: string }> {
   const run = queue.then(() => doGenerate(opts), () => doGenerate(opts));
   queue = run.catch(() => undefined);
   return run;
 }
 
-async function doGenerate(opts: GenerateOptions): Promise<{ content: string; toolCalls: ToolCall[] }> {
+async function doGenerate(opts: GenerateOptions): Promise<{ content: string; toolCalls: ToolCall[]; thinking?: string }> {
   const { completion } = await ensureLoaded(opts.modelFile);
-  const prompt = buildPrompt(opts.messages, opts.tools);
-  let raw = "";
+  const prompt = buildPrompt(opts.messages, opts.tools, !!opts.thinking);
+  // O prompt já termina com "<think>\n"; o texto gerado começa dentro do bloco de raciocínio.
+  let raw = opts.thinking ? "<think>\n" : "";
+  let shownThinking = "";
   let shown = "";
   let stopped = false;
 
   // Só envia ao usuário o texto visível: sem bloco <think> e sem <tool_call>.
   const visible = (): string => {
     let text = raw.replace(/<think>[\s\S]*?<\/think>/g, "");
+    // Raciocínio ainda em andamento (bloco aberto): não é texto da resposta.
+    const openThink = text.indexOf("<think>");
+    if (openThink >= 0) text = text.slice(0, openThink);
     // Respostas que começam com JSON ou bloco de código podem ser chamadas de ferramenta: só mostram no fim.
     const head = text.trimStart();
     if (head.startsWith("{") || head.startsWith("```")) return "";
@@ -216,6 +236,13 @@ async function doGenerate(opts: GenerateOptions): Promise<{ content: string; too
       signal: opts.signal,
       onTextChunk: (chunk: string) => {
         raw += chunk;
+        if (opts.thinking && opts.onThinking) {
+          const th = extractThinking(raw);
+          if (th.length > shownThinking.length) {
+            opts.onThinking(th.slice(shownThinking.length));
+            shownThinking = th;
+          }
+        }
         const text = visible();
         if (text.length > shown.length && !stopped) {
           opts.onDelta(text.slice(shown.length));
@@ -227,5 +254,7 @@ async function doGenerate(opts: GenerateOptions): Promise<{ content: string; too
   } catch (err) {
     if (!opts.signal.aborted) throw err;
   }
-  return parseOutput(raw);
+  const parsed = parseOutput(raw);
+  const thinking = opts.thinking ? extractThinking(raw) : "";
+  return thinking ? { ...parsed, thinking } : parsed;
 }

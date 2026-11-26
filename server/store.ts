@@ -299,6 +299,22 @@ export function deleteProject(id: string): void {
   db.prepare("DELETE FROM projects WHERE id = ?").run(id);
 }
 
+/** Cria uma conversa nova com as mensagens até `messageId` (inclusive): um ramo para seguir por outro caminho. */
+export function branchConversation(sourceId: string, messageId: string): Conversation | null {
+  const source = getConversation(sourceId);
+  if (!source) return null;
+  const msgs = listMessages(sourceId);
+  const cut = msgs.findIndex((m) => m.id === messageId);
+  if (cut < 0) return null;
+  const branch = createConversation(`${source.title} (ramo)`.slice(0, 80), (source.kind ?? "chat") as SessionKind, source.folder ?? null);
+  for (const m of msgs.slice(0, cut + 1)) {
+    appendMessage(branch.id, { role: m.role, content: m.content, toolCalls: m.toolCalls, toolCallId: m.toolCallId, toolName: m.toolName });
+  }
+  const projectId = conversationProjectId(sourceId);
+  if (projectId) setConversationProject(branch.id, projectId);
+  return getConversation(branch.id) ?? branch;
+}
+
 export function setConversationProject(conversationId: string, projectId: string | null): void {
   db.prepare("UPDATE conversations SET project_id = ? WHERE id = ?").run(projectId, conversationId);
 }
@@ -366,6 +382,8 @@ export function getSettings(): Settings {
     responseStyle: "normal",
     maxTokens: 2048,
     customPrompt: "",
+    jailbreak: false,
+    reasoning: false,
   };
   const saved = getKv<Partial<Settings>>("settings", {});
   const merged = { ...defaults, ...saved };

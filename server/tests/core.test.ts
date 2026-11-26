@@ -2,10 +2,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { parseOutput, buildPrompt } from "../native.ts";
+import { parseOutput, buildPrompt, stripThinking, extractThinking } from "../native.ts";
 import { parseSkill } from "../skills.ts";
 import { contextCategories } from "../workspace.ts";
 import { lineDiff, toHunks, revertHunks } from "../diff.ts";
+import { systemPrompt } from "../agent.ts";
 import { resolveInside, permissionKey, describeAction, parseDuckHtml, parseDuckLite, parseBing, parseWikipedia } from "../tools.ts";
 
 test("parseOutput lê chamada de ferramenta em <tool_call>", () => {
@@ -119,4 +120,20 @@ test("diff: separa trechos distantes e reverte só o escolhido", () => {
 test("diff: arquivo novo e arquivo igual", () => {
   assert.deepEqual(toHunks(lineDiff("", "a\nb"))[0].lines, ["+a", "+b"]);
   assert.equal(toHunks(lineDiff("x\ny", "x\ny")).length, 0);
+});
+test("prompt jailbreak entra no prompt de sistema só quando ligado", () => {
+  const base = { responseStyle: "normal", customPrompt: "", workspace: "x", jailbreak: false } as any;
+  assert.ok(!systemPrompt(base, "ask", []).includes("VXNQR"));
+  assert.ok(systemPrompt({ ...base, jailbreak: true }, "ask", []).includes("VXNQR"));
+});
+test("raciocínio: prompt aberto, extração e limpeza do histórico", () => {
+  const msgs = [{ role: "user" as const, content: "oi" }, { role: "assistant" as const, content: "<think>pensei</think>\n\nolá" }];
+  const open = buildPrompt([...msgs, { role: "user" as const, content: "e aí?" }], [], true);
+  assert.ok(open.endsWith("<|im_start|>assistant\n<think>\n"));
+  assert.ok(!open.includes("pensei"));
+  assert.ok(buildPrompt(msgs, [], false).endsWith("<think>\n\n</think>\n\n"));
+  assert.equal(extractThinking("<think>\nabc\n</think>\n\nresposta"), "abc");
+  assert.equal(extractThinking("<think>\nainda pensando"), "ainda pensando");
+  assert.equal(stripThinking("<think>x</think>\n\nresposta"), "resposta");
+  assert.equal(parseOutput("<think>\ncortou no meio").content, "");
 });

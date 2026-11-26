@@ -15,17 +15,21 @@ export interface StreamOptions {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  /** Só o modelo nativo: deixa o Qwen3 pensar antes de responder. */
+  thinking?: boolean;
+  onThinking?: (text: string) => void;
 }
 
 export interface StreamResult {
   content: string;
   toolCalls: ToolCall[];
+  thinking?: string;
 }
 
 export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
   switch (opts.provider.kind) {
     case "native":
-      return generate({ modelFile: opts.model, messages: opts.messages, tools: opts.tools, signal: opts.signal, onDelta: opts.onDelta, temperature: opts.temperature, topP: opts.topP, maxTokens: opts.maxTokens });
+      return generate({ modelFile: opts.model, messages: opts.messages, tools: opts.tools, signal: opts.signal, onDelta: opts.onDelta, temperature: opts.temperature, topP: opts.topP, maxTokens: opts.maxTokens, thinking: opts.thinking, onThinking: opts.onThinking });
     case "openai":
       return streamOpenAI(opts);
     case "anthropic":

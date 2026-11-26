@@ -64,6 +64,7 @@ const P: Record<string, string[]> = {
   play: ["M8 5l11 7-11 7z"],
   calendar: ["M4 6h16v14H4z", "M4 10h16", "M8 3v4", "M16 3v4"],
   server: ["M4 4h16v7H4z", "M4 13h16v7H4z", "M8 7.5h.01", "M8 16.5h.01"],
+  branch: ["M6 3v12", "M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z", "M18 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z", "M18 9c0 5-12 3-12 6"],
   pin: ["M9 4h6l-1 6 3 3H7l3-3z", "M12 13v7"],
 };
 

@@ -64,6 +64,7 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
   const [rate, setRate] = useState(() => Number(localStorage.getItem("zenith-rate") ?? "1"));
 
   const [modelsDir, setModelsDir] = useState("");
+  const [jbText, setJbText] = useState("");
   useEffect(() => {
     api.modelsDir().then((r) => setModelsDir(r.path)).catch(() => undefined);
     api.memory().then((r) => { setMemory(r.content); setMemoryLoaded(r.content); }).catch(() => undefined);
@@ -102,6 +103,8 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
         responseStyle: draft.responseStyle,
         maxTokens: draft.maxTokens,
         customPrompt: draft.customPrompt,
+        jailbreak: draft.jailbreak,
+        reasoning: draft.reasoning,
         alwaysAllow: draft.alwaysAllow,
       });
       if (memory !== memoryLoaded) {
@@ -212,6 +215,12 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
                   <small>Limita as palavras consideradas a uma fatia de probabilidade.</small>
                 </label>
               </div>
+              <div className="row-list">
+                <div>
+                  <div className="grow"><div className="row-title">Raciocínio (pensar antes de responder)</div><small>Só no modelo local (Qwen3). O modelo escreve o raciocínio antes da resposta, que aparece recolhido em "Raciocínio". Melhora problemas difíceis, mas deixa cada resposta mais lenta.</small></div>
+                  <button className={`switch ${draft.reasoning ? "on" : ""}`} onClick={() => setDraft({ ...draft, reasoning: !draft.reasoning })} role="switch" aria-checked={!!draft.reasoning} aria-label="Ligar o raciocínio" />
+                </div>
+              </div>
               <label className="field"><span>Instruções extras (somadas ao prompt de sistema)</span>
                 <textarea rows={3} value={draft.customPrompt} onChange={(e) => setDraft({ ...draft, customPrompt: e.target.value })} placeholder="Ex.: Sempre responda com um exemplo de código." />
               </label>
@@ -237,6 +246,17 @@ export function SettingsModal({ settings, skills, hooks, theme, onTheme, onSaved
                   ))}
                 </div>
               )}
+              <h3>Jailbreak</h3>
+              <div className="row-list">
+                <div>
+                  <div className="grow"><div className="row-title">Prompt "jailbreak"</div><small>Quando ligado, o modelo lê o texto de prompts/jailbreak.md junto com o prompt de sistema (perfil de engenharia reversa de jogos, assinatura "VXNQR" na primeira linha). Vale para todas as conversas.</small></div>
+                  <button className={`switch ${draft.jailbreak ? "on" : ""}`} onClick={() => setDraft({ ...draft, jailbreak: !draft.jailbreak })} role="switch" aria-checked={!!draft.jailbreak} aria-label="Ligar o prompt jailbreak" />
+                </div>
+              </div>
+              <details className="jb-preview" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open && !jbText) api.jailbreakText().then((r) => setJbText(r.text)).catch(() => setJbText("Não foi possível ler o arquivo.")); }}>
+                <summary>Ver o texto do prompt</summary>
+                <pre className="code-sample">{jbText || "Carregando…"}</pre>
+              </details>
               <h3>Hooks</h3>
               <p className="hint">{Object.keys(hooks).length ? `Carregados de .zenith/hooks.json: ${Object.keys(hooks).join(", ")}.` : "Nenhum hook configurado. Crie .zenith/hooks.json na pasta de trabalho para rodar comandos em SessionStart, PreToolUse, PostToolUse ou Stop."}</p>
             </>

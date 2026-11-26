@@ -17,10 +17,11 @@ const TEXT_EXT = /\.(md|txt|csv|json|ts|tsx|js|jsx|py|html|css|yml|yaml|xml|log|
 
 interface Live {
   text: string;
+  thinking: string;
   tools: LiveTool[];
   perms: LivePerm[];
 }
-const EMPTY_LIVE: Live = { text: "", tools: [], perms: [] };
+const EMPTY_LIVE: Live = { text: "", thinking: "", tools: [], perms: [] };
 
 const CHAT_SUGGESTIONS: { label: string; text: string; icon: IconName }[] = [
   { label: "Escrever", text: "Me ajude a escrever um e-mail curto e educado pedindo um prazo maior.", icon: "pencil" },
@@ -335,6 +336,8 @@ export default function App() {
       switch (e.type) {
         case "delta":
           return { ...prev, text: prev.text + e.text };
+        case "thinking":
+          return { ...prev, thinking: prev.thinking + e.text };
         case "tool_start":
           return { ...prev, tools: [...prev.tools, { id: e.id, name: e.name, args: e.args, status: "running" }] };
         case "tool_result":
@@ -707,6 +710,7 @@ export default function App() {
                           edits={edits.filter((e) => e.toolCallId && (m.toolCalls ?? []).some((t) => t.id === e.toolCallId))}
                           onEditsChanged={loadEdits}
                           onNotice={setToast}
+                          onBranch={activeId ? async () => { const b = await api.branch(activeId, m.id); await refreshConversations(); setActiveId(b.id); setToast("Ramo criado: a conversa foi copiada até aqui."); } : undefined}
                           isLast={m.id === lastAssistantId && !streaming}
                           onPreview={setPreview}
                           onRegenerate={m.id === lastAssistantId ? regenerateLast : undefined}
@@ -716,7 +720,7 @@ export default function App() {
                         />
                       );
                     })}
-                    {streaming && <LiveAssistant text={live.text} tools={live.tools} perms={live.perms} onAnswer={answer} />}
+                    {streaming && <LiveAssistant text={live.text} thinking={live.thinking} tools={live.tools} perms={live.perms} onAnswer={answer} />}
                     <div ref={bottomRef} />
                   </div>
                 </div>

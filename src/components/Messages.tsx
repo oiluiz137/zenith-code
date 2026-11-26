@@ -56,6 +56,27 @@ function argPreview(args: Record<string, unknown>): string {
   return typeof main === "string" ? main : JSON.stringify(args).slice(0, 120);
 }
 
+/** Separa o raciocínio guardado no começo da resposta (<think>…</think>) do texto final. */
+export function splitThinking(content: string): { thinking: string; text: string } {
+  const m = /^\s*<think>([\s\S]*?)<\/think>\s*/.exec(content);
+  return m ? { thinking: m[1].trim(), text: content.slice(m[0].length) } : { thinking: "", text: content };
+}
+
+function Thinking({ text, live = false }: { text: string; live?: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (!text && !live) return null;
+  return (
+    <div className="thinking-block">
+      <button className="tool-summary" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        {live && <span className="spinner" />}
+        <span>{live ? "Pensando…" : "Raciocínio"}</span>
+        <Icon name={open ? "chevron" : "right"} size={13} />
+      </button>
+      {open && <div className="thinking-text">{text || "…"}</div>}
+    </div>
+  );
+}
+
 function plainText(md: string): string {
   return md.replace(/```[\s\S]*?```/g, " bloco de código. ").replace(/[`*_#>|]/g, "").replace(/\[(.*?)\]\(.*?\)/g, "$1");
 }
@@ -158,14 +179,16 @@ function ToolGroup({ calls, results }: { calls: { id: string; name: string; args
   );
 }
 
-export function AssistantMessage({ m, results, edits = [], onEditsChanged, onNotice, onPreview, onRegenerate, disabled, feedback, onFeedback, isLast }: { m: StoredMessage; results?: Record<string, string>; edits?: AgentEdit[]; onEditsChanged?: () => void; onNotice?: (msg: string) => void; onPreview: (html: string) => void; onRegenerate?: () => void; disabled: boolean; feedback?: string; onFeedback?: (v: "up" | "down" | null) => void; isLast?: boolean }) {
-  const artifacts = htmlBlocks(m.content);
+export function AssistantMessage({ m, results, edits = [], onEditsChanged, onNotice, onBranch, onPreview, onRegenerate, disabled, feedback, onFeedback, isLast }: { m: StoredMessage; results?: Record<string, string>; edits?: AgentEdit[]; onEditsChanged?: () => void; onNotice?: (msg: string) => void; onBranch?: () => void; onPreview: (html: string) => void; onRegenerate?: () => void; disabled: boolean; feedback?: string; onFeedback?: (v: "up" | "down" | null) => void; isLast?: boolean }) {
+  const { thinking, text: answer } = splitThinking(m.content);
+  const artifacts = htmlBlocks(answer);
   const calls: ToolCall[] = m.toolCalls ?? [];
   return (
     <div className={`msg assistant ${isLast ? "last" : ""}`}>
       {calls.length > 0 && <ToolGroup calls={calls} results={results} />}
       {edits.length > 0 && <EditsReview edits={edits} onChanged={() => onEditsChanged?.()} onNotice={(msg) => onNotice?.(msg)} />}
-      {m.content ? <div className="body"><Markdown text={m.content} /></div> : null}
+      {thinking && <Thinking text={thinking} />}
+      {answer ? <div className="body"><Markdown text={answer} /></div> : null}
       {artifacts.map((html, i) => {
         const title = /<title>(.*?)<\/title>/i.exec(html)?.[1] ?? `Página HTML ${artifacts.length > 1 ? i + 1 : ""}`;
         return (
@@ -179,12 +202,13 @@ export function AssistantMessage({ m, results, edits = [], onEditsChanged, onNot
           </button>
         );
       })}
-      {m.content && (
+      {answer && (
         <div className="msg-actions">
-          <CopyButton text={m.content} />
-          <SpeakButton text={m.content} />
+          <CopyButton text={answer} />
+          <SpeakButton text={answer} />
           <button className={feedback === "up" ? "on" : ""} onClick={() => onFeedback?.(feedback === "up" ? null : "up")} title="Boa resposta (fica só neste computador)" aria-label="Boa resposta"><Icon name="thumbUp" size={15} /></button>
           <button className={feedback === "down" ? "on" : ""} onClick={() => onFeedback?.(feedback === "down" ? null : "down")} title="Resposta ruim (fica só neste computador)" aria-label="Resposta ruim"><Icon name="thumbDown" size={15} /></button>
+          {onBranch && <button onClick={onBranch} disabled={disabled} title="Ramificar: nova conversa a partir daqui" aria-label="Ramificar"><Icon name="branch" size={15} /></button>}
           {onRegenerate && <button onClick={onRegenerate} disabled={disabled} title="Gerar de novo" aria-label="Gerar de novo"><Icon name="refresh" size={15} /></button>}
         </div>
       )}
@@ -192,12 +216,13 @@ export function AssistantMessage({ m, results, edits = [], onEditsChanged, onNot
   );
 }
 
-export function LiveAssistant({ text, tools, perms, onAnswer }: { text: string; tools: LiveTool[]; perms: LivePerm[]; onAnswer: (id: string, d: "once" | "always" | "deny") => void }) {
+export function LiveAssistant({ text, thinking = "", tools, perms, onAnswer }: { text: string; thinking?: string; tools: LiveTool[]; perms: LivePerm[]; onAnswer: (id: string, d: "once" | "always" | "deny") => void }) {
   return (
     <div className="msg assistant">
       {tools.length > 0 && <ToolGroup calls={tools} />}
       {perms.map((p) => <PermissionCard key={p.id} p={p} onAnswer={onAnswer} />)}
-      {text ? <div className="body"><Markdown text={text} /></div> : <div className="typing"><span /><span /><span /></div>}
+      {thinking && !text && <Thinking text={thinking} live />}
+      {text ? <div className="body"><Markdown text={text} /></div> : thinking ? null : <div className="typing"><span /><span /><span /></div>}
     </div>
   );
 }

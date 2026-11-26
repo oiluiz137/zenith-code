@@ -540,3 +540,9 @@ html.desktop .settings-main { position: relative; }
 .dialog-text { margin: 0; color: var(--ink-2); line-height: 1.5; }
 .btn.danger-solid { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn.danger-solid:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Raciocínio do modelo */
+.thinking-block { display: flex; flex-direction: column; gap: 6px; }
+.thinking-text { white-space: pre-wrap; color: var(--muted); font-size: 14px; line-height: 1.6; border-left: 2px solid var(--line); padding: 2px 0 2px 12px; max-height: 360px; overflow: auto; }
+.jb-preview summary { cursor: pointer; color: var(--muted); font-size: 13px; margin: 6px 0; }
+.jb-preview pre { max-height: 300px; overflow: auto; }

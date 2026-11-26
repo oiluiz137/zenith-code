@@ -19,3 +19,6 @@ docs/referencias-visuais/
 # Build da release
 dist-server/
 release/
+
+# Pasta de testes local
+temporario/
